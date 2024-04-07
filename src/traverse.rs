@@ -48,10 +48,13 @@ pub trait Traverse<'a, 't> {
     }
 
     fn walk_program(&mut self, program: &gcell!(TraversableProgram<'a, 't>), tk: &mut Token<'t>) {
-        let len = program.borrow(tk).body.len();
-        for index in 0..len {
+        // Need to read `len()` on each turn of the loop, as `visit_statement` (or a child of it)
+        // could add more nodes to the `Vec`
+        let mut index = 0;
+        while index < program.borrow(tk).body.len() {
             let stmt = program.borrow(tk).body.as_slice()[index].borrow(tk).clone();
             self.visit_statement(&stmt, tk);
+            index += 1;
         }
     }
 
