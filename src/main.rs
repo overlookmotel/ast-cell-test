@@ -7,7 +7,7 @@ mod print;
 mod traverse;
 mod visit;
 use ast::{
-    traversable::{Expression, ExpressionParent, UnaryExpression},
+    traversable::{Expression, Parent, UnaryExpression},
     BinaryOperator, UnaryOperator,
 };
 use cell::{GCell, Token};
@@ -36,7 +36,7 @@ impl<'a> Traverse<'a> for TransformTypeof {
         self.walk_unary_expression(unary_expr, tk);
 
         if unary_expr.borrow(tk).operator == UnaryOperator::Typeof {
-            if let ExpressionParent::BinaryExpressionLeft(bin_expr) = unary_expr.borrow(tk).parent {
+            if let Parent::BinaryExpressionLeft(bin_expr) = unary_expr.borrow(tk).parent {
                 if matches!(
                     bin_expr.borrow(tk).operator,
                     BinaryOperator::Equality | BinaryOperator::StrictEquality
