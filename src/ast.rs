@@ -25,10 +25,10 @@
 
 use oxc_allocator::{Box, Vec};
 
-use crate::cell::{SharedBox, SharedVec};
+use crate::cell::{GCell, SharedBox, SharedVec};
 
 /// Macro to assert equivalence in size and alignment between standard and traversable types
-macro_rules! assert_size_align_match {
+macro_rules! link_types {
     ($standard:ident, $traversable:ident) => {
         const _: () = {
             use std::mem::{align_of, size_of};
@@ -39,7 +39,24 @@ macro_rules! assert_size_align_match {
                 align_of::<Box<$standard>>() == align_of::<&crate::cell::GCell<$traversable>>()
             );
         };
+
+        impl<'a> AsTraversable for $standard<'a> {
+            type Traversable = $traversable<'a>;
+        }
     };
+}
+
+pub trait AsTraversable {
+    type Traversable;
+
+    /// Convert `&mut` ref to standard AST node to a `&mut GCell` to it's traversable counterpart type
+    fn as_traversable(&mut self) -> &mut GCell<Self::Traversable> {
+        // SAFETY: All standard and traversable AST types are mirrors of each other, with identical layouts.
+        // This is ensured by `#[repr(C)]` on all types. Therefore one can safely be transmuted to the other.
+        // As we hold a `&mut` reference to the AST node, it's guaranteed there are no other live references.
+        let traversable = unsafe { &mut *(self as *mut Self as *mut Self::Traversable) };
+        GCell::from_mut(traversable)
+    }
 }
 
 #[derive(Debug)]
@@ -49,11 +66,11 @@ pub struct Program<'a> {
 }
 
 #[repr(C)]
-pub struct TraversableProgram<'a, 't> {
-    pub body: shared_vec!(TraversableStatement<'a, 't>),
+pub struct TraversableProgram<'a> {
+    pub body: SharedVec<'a, TraversableStatement<'a>>,
 }
 
-assert_size_align_match!(Program, TraversableProgram);
+link_types!(Program, TraversableProgram);
 
 #[derive(Debug)]
 #[repr(C, u8)]
@@ -67,7 +84,7 @@ pub enum TraversableStatement<'a> {
     ExpressionStatement(SharedBox<'a, TraversableExpressionStatement<'a>>) = 0,
 }
 
-assert_size_align_match!(Statement, TraversableStatement);
+link_types!(Statement, TraversableStatement);
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C, u8)]
@@ -78,12 +95,12 @@ pub enum StatementParent<'a> {
 
 #[derive(Clone, Copy)]
 #[repr(C, u8)]
-pub enum TraversableStatementParent<'a, 't> {
+pub enum TraversableStatementParent<'a> {
     None = 0,
-    Program(shared_box!(TraversableProgram<'a, 't>)) = 1,
+    Program(SharedBox<'a, TraversableProgram<'a>>) = 1,
 }
 
-assert_size_align_match!(StatementParent, TraversableStatementParent);
+link_types!(StatementParent, TraversableStatementParent);
 
 #[derive(Debug)]
 #[repr(C)]
@@ -99,7 +116,7 @@ pub struct TraversableExpressionStatement<'a> {
     pub parent: TraversableStatementParent<'a>,
 }
 
-assert_size_align_match!(ExpressionStatement, TraversableExpressionStatement);
+link_types!(ExpressionStatement, TraversableExpressionStatement);
 
 #[derive(Debug)]
 #[repr(C, u8)]
@@ -119,7 +136,7 @@ pub enum TraversableExpression<'a> {
     UnaryExpression(SharedBox<'a, TraversableUnaryExpression<'a>>) = 3,
 }
 
-assert_size_align_match!(Expression, TraversableExpression);
+link_types!(Expression, TraversableExpression);
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C, u8)]
@@ -141,7 +158,7 @@ pub enum TraversableExpressionParent<'a> {
     UnaryExpression(SharedBox<'a, TraversableUnaryExpression<'a>>) = 4,
 }
 
-assert_size_align_match!(ExpressionParent, TraversableExpressionParent);
+link_types!(ExpressionParent, TraversableExpressionParent);
 
 #[derive(Debug)]
 #[repr(C)]
@@ -157,7 +174,7 @@ pub struct TraversableIdentifierReference<'a> {
     pub parent: TraversableExpressionParent<'a>,
 }
 
-assert_size_align_match!(IdentifierReference, TraversableIdentifierReference);
+link_types!(IdentifierReference, TraversableIdentifierReference);
 
 #[derive(Debug)]
 #[repr(C)]
@@ -173,7 +190,7 @@ pub struct TraversableStringLiteral<'a> {
     pub parent: TraversableExpressionParent<'a>,
 }
 
-assert_size_align_match!(StringLiteral, TraversableStringLiteral);
+link_types!(StringLiteral, TraversableStringLiteral);
 
 #[derive(Debug)]
 #[repr(C)]
@@ -193,7 +210,7 @@ pub struct TraversableBinaryExpression<'a> {
     pub parent: TraversableExpressionParent<'a>,
 }
 
-assert_size_align_match!(BinaryExpression, TraversableBinaryExpression);
+link_types!(BinaryExpression, TraversableBinaryExpression);
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
@@ -218,7 +235,7 @@ pub struct TraversableUnaryExpression<'a> {
     pub parent: TraversableExpressionParent<'a>,
 }
 
-assert_size_align_match!(UnaryExpression, TraversableUnaryExpression);
+link_types!(UnaryExpression, TraversableUnaryExpression);
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]

@@ -4,7 +4,7 @@ use crate::{
             BinaryExpression, Expression, ExpressionStatement, IdentifierReference,
             Program as TraversableProgram, Statement, StringLiteral, UnaryExpression,
         },
-        Program,
+        AsTraversable, Program,
     },
     cell::{GCell, Token},
 };
@@ -20,13 +20,8 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
     // SAFETY: We only create one token, and it never leaves this function.
     let mut token = unsafe { Token::new_unchecked() };
 
-    // Convert AST to traversable version.
-    // SAFETY: `Program` and `TraversableProgram` are mirrors of each other, with identical layouts.
-    // The same is true of all child types - this is ensured by `#[repr(C)]` on all types.
-    // Therefore one can safely be transmuted to the other.
-    // As we hold a `&mut` reference, it's guaranteed there are no other live references.
-    let program = unsafe { &mut *(program as *mut Program<'a> as *mut TraversableProgram<'a>) };
-    let program = GCell::from_mut(program);
+    // Convert AST to traversable version
+    let program = program.as_traversable();
 
     // Run transformer on the traversable AST
     Traverse::visit_program(transformer, program, &mut token);
