@@ -4,5 +4,4 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-ghost-cell = "0.2.6"
 oxc_allocator = "0.12.1"

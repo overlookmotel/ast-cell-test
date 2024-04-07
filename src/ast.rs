@@ -3,7 +3,7 @@
 //! This file defines 2 different versions of the AST:
 //!
 //! 1. Standard version - using `Box<'a, T>` for references between types.
-//! 2. Traversable version - identical, except references between types are `SharedBox<'a, 't, T>`.
+//! 2. Traversable version - identical, except references between types are `SharedBox<'a, T>`.
 //!
 //! The difference between the two is that the traversable version features interior mutability
 //! (via `GCell`). So the traversable AST can be mutated with just an immutable `&` reference.
@@ -25,7 +25,7 @@
 
 use oxc_allocator::{Box, Vec};
 
-use crate::cell::{shared_box, shared_vec};
+use crate::cell::{SharedBox, SharedVec};
 
 /// Macro to assert equivalence in size and alignment between standard and traversable types
 macro_rules! assert_size_align_match {
@@ -63,8 +63,8 @@ pub enum Statement<'a> {
 
 #[derive(Clone)]
 #[repr(C, u8)]
-pub enum TraversableStatement<'a, 't> {
-    ExpressionStatement(shared_box!(TraversableExpressionStatement<'a, 't>)) = 0,
+pub enum TraversableStatement<'a> {
+    ExpressionStatement(SharedBox<'a, TraversableExpressionStatement<'a>>) = 0,
 }
 
 assert_size_align_match!(Statement, TraversableStatement);
@@ -94,9 +94,9 @@ pub struct ExpressionStatement<'a> {
 
 #[derive(Clone)]
 #[repr(C)]
-pub struct TraversableExpressionStatement<'a, 't> {
-    pub expression: TraversableExpression<'a, 't>,
-    pub parent: TraversableStatementParent<'a, 't>,
+pub struct TraversableExpressionStatement<'a> {
+    pub expression: TraversableExpression<'a>,
+    pub parent: TraversableStatementParent<'a>,
 }
 
 assert_size_align_match!(ExpressionStatement, TraversableExpressionStatement);
@@ -112,11 +112,11 @@ pub enum Expression<'a> {
 
 #[derive(Clone)]
 #[repr(C, u8)]
-pub enum TraversableExpression<'a, 't> {
-    StringLiteral(shared_box!(TraversableStringLiteral<'a, 't>)) = 0,
-    Identifier(shared_box!(TraversableIdentifierReference<'a, 't>)) = 1,
-    BinaryExpression(shared_box!(TraversableBinaryExpression<'a, 't>)) = 2,
-    UnaryExpression(shared_box!(TraversableUnaryExpression<'a, 't>)) = 3,
+pub enum TraversableExpression<'a> {
+    StringLiteral(SharedBox<'a, TraversableStringLiteral<'a>>) = 0,
+    Identifier(SharedBox<'a, TraversableIdentifierReference<'a>>) = 1,
+    BinaryExpression(SharedBox<'a, TraversableBinaryExpression<'a>>) = 2,
+    UnaryExpression(SharedBox<'a, TraversableUnaryExpression<'a>>) = 3,
 }
 
 assert_size_align_match!(Expression, TraversableExpression);
@@ -133,12 +133,12 @@ pub enum ExpressionParent<'a> {
 
 #[derive(Clone, Copy)]
 #[repr(C, u8)]
-pub enum TraversableExpressionParent<'a, 't> {
+pub enum TraversableExpressionParent<'a> {
     None = 0,
-    ExpressionStatement(shared_box!(TraversableExpressionStatement<'a, 't>)) = 1,
-    BinaryExpressionLeft(shared_box!(TraversableBinaryExpression<'a, 't>)) = 2,
-    BinaryExpressionRight(shared_box!(TraversableBinaryExpression<'a, 't>)) = 3,
-    UnaryExpression(shared_box!(TraversableUnaryExpression<'a, 't>)) = 4,
+    ExpressionStatement(SharedBox<'a, TraversableExpressionStatement<'a>>) = 1,
+    BinaryExpressionLeft(SharedBox<'a, TraversableBinaryExpression<'a>>) = 2,
+    BinaryExpressionRight(SharedBox<'a, TraversableBinaryExpression<'a>>) = 3,
+    UnaryExpression(SharedBox<'a, TraversableUnaryExpression<'a>>) = 4,
 }
 
 assert_size_align_match!(ExpressionParent, TraversableExpressionParent);
@@ -152,9 +152,9 @@ pub struct IdentifierReference<'a> {
 
 #[derive(Clone)]
 #[repr(C)]
-pub struct TraversableIdentifierReference<'a, 't> {
+pub struct TraversableIdentifierReference<'a> {
     pub name: &'a str,
-    pub parent: TraversableExpressionParent<'a, 't>,
+    pub parent: TraversableExpressionParent<'a>,
 }
 
 assert_size_align_match!(IdentifierReference, TraversableIdentifierReference);
@@ -168,9 +168,9 @@ pub struct StringLiteral<'a> {
 
 #[derive(Clone)]
 #[repr(C)]
-pub struct TraversableStringLiteral<'a, 't> {
+pub struct TraversableStringLiteral<'a> {
     pub value: &'a str,
-    pub parent: TraversableExpressionParent<'a, 't>,
+    pub parent: TraversableExpressionParent<'a>,
 }
 
 assert_size_align_match!(StringLiteral, TraversableStringLiteral);
@@ -186,11 +186,11 @@ pub struct BinaryExpression<'a> {
 
 #[derive(Clone)]
 #[repr(C)]
-pub struct TraversableBinaryExpression<'a, 't> {
-    pub left: TraversableExpression<'a, 't>,
+pub struct TraversableBinaryExpression<'a> {
+    pub left: TraversableExpression<'a>,
     pub operator: BinaryOperator,
-    pub right: TraversableExpression<'a, 't>,
-    pub parent: TraversableExpressionParent<'a, 't>,
+    pub right: TraversableExpression<'a>,
+    pub parent: TraversableExpressionParent<'a>,
 }
 
 assert_size_align_match!(BinaryExpression, TraversableBinaryExpression);
@@ -212,10 +212,10 @@ pub struct UnaryExpression<'a> {
 
 #[derive(Clone)]
 #[repr(C)]
-pub struct TraversableUnaryExpression<'a, 't> {
+pub struct TraversableUnaryExpression<'a> {
     pub operator: UnaryOperator,
-    pub argument: TraversableExpression<'a, 't>,
-    pub parent: TraversableExpressionParent<'a, 't>,
+    pub argument: TraversableExpression<'a>,
+    pub parent: TraversableExpressionParent<'a>,
 }
 
 assert_size_align_match!(UnaryExpression, TraversableUnaryExpression);
@@ -233,13 +233,13 @@ pub enum UnaryOperator {
 }
 
 pub mod traversable {
-    pub type Program<'a, 't> = super::TraversableProgram<'a, 't>;
-    pub type Statement<'a, 't> = super::TraversableStatement<'a, 't>;
-    pub type ExpressionStatement<'a, 't> = super::TraversableExpressionStatement<'a, 't>;
-    pub type Expression<'a, 't> = super::TraversableExpression<'a, 't>;
-    pub type ExpressionParent<'a, 't> = super::TraversableExpressionParent<'a, 't>;
-    pub type IdentifierReference<'a, 't> = super::TraversableIdentifierReference<'a, 't>;
-    pub type StringLiteral<'a, 't> = super::TraversableStringLiteral<'a, 't>;
-    pub type BinaryExpression<'a, 't> = super::TraversableBinaryExpression<'a, 't>;
-    pub type UnaryExpression<'a, 't> = super::TraversableUnaryExpression<'a, 't>;
+    pub type Program<'a> = super::TraversableProgram<'a>;
+    pub type Statement<'a> = super::TraversableStatement<'a>;
+    pub type ExpressionStatement<'a> = super::TraversableExpressionStatement<'a>;
+    pub type Expression<'a> = super::TraversableExpression<'a>;
+    pub type ExpressionParent<'a> = super::TraversableExpressionParent<'a>;
+    pub type IdentifierReference<'a> = super::TraversableIdentifierReference<'a>;
+    pub type StringLiteral<'a> = super::TraversableStringLiteral<'a>;
+    pub type BinaryExpression<'a> = super::TraversableBinaryExpression<'a>;
+    pub type UnaryExpression<'a> = super::TraversableUnaryExpression<'a>;
 }

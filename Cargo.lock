@@ -6,7 +6,6 @@ version = 3
 name = "ast-cell-test"
 version = "0.0.1"
 dependencies = [
- "ghost-cell",
  "oxc_allocator",
 ]
 
@@ -15,12 +14,6 @@ name = "bumpalo"
 version = "3.15.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ff69b9dd49fd426c69a0db9fc04dd934cdb6645ff000864d98f7e2af8830eaa"
-
-[[package]]
-name = "ghost-cell"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8449d342b1c67f49169e92e71deb7b9b27f30062301a16dbc27a4cc8d2351b7"
 
 [[package]]
 name = "oxc_allocator"
