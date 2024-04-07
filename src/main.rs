@@ -4,6 +4,7 @@ mod ast;
 mod cell;
 mod parser;
 mod print;
+mod semantic;
 mod traverse;
 mod visit;
 use ast::{
@@ -12,6 +13,7 @@ use ast::{
 };
 use cell::{GCell, Token};
 use print::Printer;
+use semantic::semantic;
 use traverse::{transform, Traverse};
 use visit::Visit;
 
@@ -22,6 +24,7 @@ use visit::Visit;
 fn main() {
     let alloc = Allocator::default();
     let program = parser::parse(&alloc);
+    semantic(program);
     println!("before: {}", Printer::print(program));
 
     transform(&mut TransformTypeof, program);
