@@ -16,7 +16,7 @@
 //!   let transformer = MyTransformer(token);
 //!   // `transform` creates a token internally and passes it to `Traverse` methods.
 //!   // so `transformer`'s methods now have access to 2 tokens, and can violate aliasing rules.
-//!   transform(transformer, &mut stmt);
+//!   transform(transformer, &mut program);
 //! })
 //! ```
 
