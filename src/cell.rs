@@ -178,7 +178,7 @@ pub type SharedVec<'a, 't, T> = oxc_allocator::Vec<'a, GCell<'t, T>>;
 
 /// Macro to reduce boilerplate of defining `SharedVec` types.
 /// `shared_vec!(Statement<'a, 't>)` -> `SharedVec<'a, 't, Statement<'a, 't>>`
-/// (which is equivalent to `GCell<'t, Vec<'a, Statement<'a, 't>>>`)
+/// (which is equivalent to `Vec<'a, GCell<'t, Statement<'a, 't>>>`)
 macro_rules! shared_vec {
     ($ty:ident<$arena:lifetime, $token:lifetime>) => {
         $crate::cell::SharedVec<$arena, $token, $ty<$arena, $token>>
