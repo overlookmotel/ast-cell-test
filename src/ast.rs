@@ -50,7 +50,7 @@ pub trait AsTraversable {
     type Traversable;
 
     /// Convert `&mut` ref to standard AST node to a `&mut GCell` to it's traversable counterpart type
-    fn as_traversable(&mut self) -> &mut GCell<Self::Traversable> {
+    fn as_traversable<'a>(&mut self) -> &'a mut GCell<Self::Traversable> {
         // SAFETY: All standard and traversable AST types are mirrors of each other, with identical layouts.
         // This is ensured by `#[repr(C)]` on all types. Therefore one can safely be transmuted to the other.
         // As we hold a `&mut` reference to the AST node, it's guaranteed there are no other live references.

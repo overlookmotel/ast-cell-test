@@ -6,7 +6,7 @@ use crate::{
         },
         AsTraversable, Program,
     },
-    cell::{GCell, Token},
+    cell::{SharedBox, Token},
 };
 
 /// Run transform visitor on AST.
@@ -34,11 +34,11 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
 }
 
 pub trait Traverse<'a> {
-    fn visit_program(&mut self, program: &GCell<TraversableProgram<'a>>, tk: &mut Token) {
+    fn visit_program(&mut self, program: SharedBox<'a, TraversableProgram<'a>>, tk: &mut Token) {
         self.walk_program(program, tk)
     }
 
-    fn walk_program(&mut self, program: &GCell<TraversableProgram<'a>>, tk: &mut Token) {
+    fn walk_program(&mut self, program: SharedBox<'a, TraversableProgram<'a>>, tk: &mut Token) {
         // Need to read `len()` on each turn of the loop, as `visit_statement` (or a child of it)
         // could add more nodes to the `Vec`
         let mut index = 0;
@@ -63,7 +63,7 @@ pub trait Traverse<'a> {
 
     fn visit_expression_statement(
         &mut self,
-        expr_stmt: &GCell<ExpressionStatement<'a>>,
+        expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
         tk: &mut Token,
     ) {
         self.walk_expression_statement(expr_stmt, tk);
@@ -71,7 +71,7 @@ pub trait Traverse<'a> {
 
     fn walk_expression_statement(
         &mut self,
-        expr_stmt: &GCell<ExpressionStatement<'a>>,
+        expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
         tk: &mut Token,
     ) {
         self.visit_expression(&expr_stmt.borrow(tk).expression.clone(), tk);
@@ -99,25 +99,46 @@ pub trait Traverse<'a> {
     }
 
     #[allow(unused_variables)]
-    fn visit_identifier_reference(&mut self, id: &GCell<IdentifierReference<'a>>, tk: &mut Token) {}
+    fn visit_identifier_reference(
+        &mut self,
+        id: SharedBox<'a, IdentifierReference<'a>>,
+        tk: &mut Token,
+    ) {
+    }
 
     #[allow(unused_variables)]
-    fn visit_string_literal(&mut self, str_lit: &GCell<StringLiteral<'a>>, tk: &mut Token) {}
+    fn visit_string_literal(&mut self, str_lit: SharedBox<'a, StringLiteral<'a>>, tk: &mut Token) {}
 
-    fn visit_binary_expression(&mut self, bin_expr: &GCell<BinaryExpression<'a>>, tk: &mut Token) {
+    fn visit_binary_expression(
+        &mut self,
+        bin_expr: SharedBox<'a, BinaryExpression<'a>>,
+        tk: &mut Token,
+    ) {
         self.walk_binary_expression(bin_expr, tk);
     }
 
-    fn walk_binary_expression(&mut self, bin_expr: &GCell<BinaryExpression<'a>>, tk: &mut Token) {
+    fn walk_binary_expression(
+        &mut self,
+        bin_expr: SharedBox<'a, BinaryExpression<'a>>,
+        tk: &mut Token,
+    ) {
         self.visit_expression(&bin_expr.borrow(tk).left.clone(), tk);
         self.visit_expression(&bin_expr.borrow(tk).right.clone(), tk);
     }
 
-    fn visit_unary_expression(&mut self, unary_expr: &GCell<UnaryExpression<'a>>, tk: &mut Token) {
+    fn visit_unary_expression(
+        &mut self,
+        unary_expr: SharedBox<'a, UnaryExpression<'a>>,
+        tk: &mut Token,
+    ) {
         self.walk_unary_expression(unary_expr, tk);
     }
 
-    fn walk_unary_expression(&mut self, unary_expr: &GCell<UnaryExpression<'a>>, tk: &mut Token) {
+    fn walk_unary_expression(
+        &mut self,
+        unary_expr: SharedBox<'a, UnaryExpression<'a>>,
+        tk: &mut Token,
+    ) {
         self.visit_expression(&unary_expr.borrow(tk).argument.clone(), tk);
     }
 }

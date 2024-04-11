@@ -11,7 +11,7 @@ use ast::{
     traversable::{Expression, Parent, UnaryExpression},
     BinaryOperator, UnaryOperator,
 };
-use cell::{GCell, Token};
+use cell::{SharedBox, Token};
 use print::Printer;
 use semantic::semantic;
 use traverse::{transform, Traverse};
@@ -35,7 +35,11 @@ fn main() {
 struct TransformTypeof;
 
 impl<'a> Traverse<'a> for TransformTypeof {
-    fn visit_unary_expression(&mut self, unary_expr: &GCell<UnaryExpression<'a>>, tk: &mut Token) {
+    fn visit_unary_expression(
+        &mut self,
+        unary_expr: SharedBox<'a, UnaryExpression<'a>>,
+        tk: &mut Token,
+    ) {
         self.walk_unary_expression(unary_expr, tk);
 
         if unary_expr.borrow(tk).operator == UnaryOperator::Typeof {
