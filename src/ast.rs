@@ -23,9 +23,11 @@
 // and apply `#[repr(C)]` (for structs) / `#[repr(C, u8)]` (for enums) programmatically,
 // so can't get forgotten.
 
+use std::mem;
+
 use oxc_allocator::{Box, Vec};
 
-use crate::cell::{SharedBox, SharedVec};
+use crate::cell::{SharedBox, SharedVec, Token};
 
 /// Macro to assert equivalence in size and alignment between standard and traversable types
 macro_rules! link_types {
@@ -98,20 +100,56 @@ mod traversable_expression_statement {
     #[derive(Clone)]
     #[repr(C)]
     pub struct TraversableExpressionStatement<'a> {
-        pub expression: traversable::Expression<'a>,
-        pub parent: traversable::Parent<'a>,
+        pub(super) expression: traversable::Expression<'a>,
+        pub(super) parent: traversable::Parent<'a>,
     }
 
     link_types!(ExpressionStatement, TraversableExpressionStatement);
+
+    impl<'a> traversable::ExpressionStatement<'a> {
+        pub fn expression(&self) -> &traversable::Expression<'a> {
+            &self.expression
+        }
+
+        pub fn set_expression(
+            expr_stmt: SharedBox<'a, traversable::ExpressionStatement<'a>>,
+            expr: traversable::Expression<'a>,
+            tk: &mut Token,
+        ) {
+            expr.set_parent(traversable::Parent::ExpressionStatement(expr_stmt), tk);
+            expr_stmt.borrow_mut(tk).expression = expr;
+        }
+
+        pub fn take_expression(
+            expr_stmt: SharedBox<'a, traversable::ExpressionStatement<'a>>,
+            tk: &mut Token,
+        ) -> traversable::Expression<'a> {
+            let expr = mem::replace(
+                &mut expr_stmt.borrow_mut(tk).expression,
+                traversable::Expression::Dummy,
+            );
+            expr.remove_parent(tk);
+            expr
+        }
+
+        pub fn parent(&self) -> traversable::Parent<'a> {
+            self.parent
+        }
+
+        pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
+            self.parent = parent;
+        }
+    }
 }
 
 #[derive(Debug)]
 #[repr(C, u8)]
 pub enum Expression<'a> {
-    StringLiteral(Box<'a, StringLiteral<'a>>) = 0,
-    Identifier(Box<'a, IdentifierReference<'a>>) = 1,
-    BinaryExpression(Box<'a, BinaryExpression<'a>>) = 2,
-    UnaryExpression(Box<'a, UnaryExpression<'a>>) = 3,
+    Dummy = 0,
+    StringLiteral(Box<'a, StringLiteral<'a>>) = 1,
+    Identifier(Box<'a, IdentifierReference<'a>>) = 2,
+    BinaryExpression(Box<'a, BinaryExpression<'a>>) = 3,
+    UnaryExpression(Box<'a, UnaryExpression<'a>>) = 4,
 }
 
 mod traversable_expression {
@@ -120,13 +158,62 @@ mod traversable_expression {
     #[derive(Clone)]
     #[repr(C, u8)]
     pub enum TraversableExpression<'a> {
-        StringLiteral(SharedBox<'a, traversable::StringLiteral<'a>>) = 0,
-        Identifier(SharedBox<'a, traversable::IdentifierReference<'a>>) = 1,
-        BinaryExpression(SharedBox<'a, traversable::BinaryExpression<'a>>) = 2,
-        UnaryExpression(SharedBox<'a, traversable::UnaryExpression<'a>>) = 3,
+        Dummy = 0,
+        StringLiteral(SharedBox<'a, traversable::StringLiteral<'a>>) = 1,
+        Identifier(SharedBox<'a, traversable::IdentifierReference<'a>>) = 2,
+        BinaryExpression(SharedBox<'a, traversable::BinaryExpression<'a>>) = 3,
+        UnaryExpression(SharedBox<'a, traversable::UnaryExpression<'a>>) = 4,
     }
 
     link_types!(Expression, TraversableExpression);
+
+    impl<'a> TraversableExpression<'a> {
+        pub(super) fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
+            use TraversableExpression::*;
+            match self {
+                StringLiteral(expr) => {
+                    let expr = expr.borrow_mut(tk);
+                    expr.parent.assert_none();
+                    expr.parent = parent;
+                }
+                Identifier(expr) => {
+                    let expr = expr.borrow_mut(tk);
+                    expr.parent.assert_none();
+                    expr.parent = parent;
+                }
+                BinaryExpression(expr) => {
+                    let expr = expr.borrow_mut(tk);
+                    expr.parent.assert_none();
+                    expr.parent = parent;
+                }
+                UnaryExpression(expr) => {
+                    let expr = expr.borrow_mut(tk);
+                    expr.parent.assert_none();
+                    expr.parent = parent;
+                }
+                Dummy => unreachable!("Cannot set parent of a dummy Expression"),
+            }
+        }
+
+        pub(super) fn remove_parent(&self, tk: &mut Token) {
+            use TraversableExpression::*;
+            match self {
+                StringLiteral(expr) => {
+                    expr.borrow_mut(tk).parent = traversable::Parent::None;
+                }
+                Identifier(expr) => {
+                    expr.borrow_mut(tk).parent = traversable::Parent::None;
+                }
+                BinaryExpression(expr) => {
+                    expr.borrow_mut(tk).parent = traversable::Parent::None;
+                }
+                UnaryExpression(expr) => {
+                    expr.borrow_mut(tk).parent = traversable::Parent::None;
+                }
+                Dummy => unreachable!("Cannot set parent of a dummy Expression"),
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -184,13 +271,73 @@ mod traversable_binary_expression {
     #[derive(Clone)]
     #[repr(C)]
     pub struct TraversableBinaryExpression<'a> {
-        pub left: traversable::Expression<'a>,
+        pub(super) left: traversable::Expression<'a>,
         pub operator: BinaryOperator,
-        pub right: traversable::Expression<'a>,
-        pub parent: traversable::Parent<'a>,
+        pub(super) right: traversable::Expression<'a>,
+        pub(super) parent: traversable::Parent<'a>,
     }
 
     link_types!(BinaryExpression, TraversableBinaryExpression);
+
+    impl<'a> traversable::BinaryExpression<'a> {
+        pub fn left(&self) -> &traversable::Expression<'a> {
+            &self.left
+        }
+
+        pub fn right(&self) -> &traversable::Expression<'a> {
+            &self.right
+        }
+
+        pub fn set_left(
+            bin_expr: SharedBox<'a, traversable::BinaryExpression<'a>>,
+            expr: traversable::Expression<'a>,
+            tk: &mut Token,
+        ) {
+            expr.set_parent(traversable::Parent::BinaryExpressionLeft(bin_expr), tk);
+            bin_expr.borrow_mut(tk).left = expr;
+        }
+
+        pub fn set_right(
+            bin_expr: SharedBox<'a, traversable::BinaryExpression<'a>>,
+            expr: traversable::Expression<'a>,
+            tk: &mut Token,
+        ) {
+            expr.set_parent(traversable::Parent::BinaryExpressionRight(bin_expr), tk);
+            bin_expr.borrow_mut(tk).right = expr;
+        }
+
+        pub fn take_left(
+            bin_expr: SharedBox<'a, traversable::BinaryExpression<'a>>,
+            tk: &mut Token,
+        ) -> traversable::Expression<'a> {
+            let expr = mem::replace(
+                &mut bin_expr.borrow_mut(tk).left,
+                traversable::Expression::Dummy,
+            );
+            expr.remove_parent(tk);
+            expr
+        }
+
+        pub fn take_right(
+            bin_expr: SharedBox<'a, traversable::BinaryExpression<'a>>,
+            tk: &mut Token,
+        ) -> traversable::Expression<'a> {
+            let expr = mem::replace(
+                &mut bin_expr.borrow_mut(tk).right,
+                traversable::Expression::Dummy,
+            );
+            expr.remove_parent(tk);
+            expr
+        }
+
+        pub fn parent(self) -> traversable::Parent<'a> {
+            self.parent
+        }
+
+        pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
+            self.parent = parent;
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -215,11 +362,46 @@ mod traversable_unary_expression {
     #[repr(C)]
     pub struct TraversableUnaryExpression<'a> {
         pub operator: UnaryOperator,
-        pub argument: traversable::Expression<'a>,
-        pub parent: traversable::Parent<'a>,
+        pub(super) argument: traversable::Expression<'a>,
+        pub(super) parent: traversable::Parent<'a>,
     }
 
     link_types!(UnaryExpression, TraversableUnaryExpression);
+
+    impl<'a> traversable::UnaryExpression<'a> {
+        pub fn argument(&self) -> &traversable::Expression<'a> {
+            &self.argument
+        }
+
+        pub fn set_argument(
+            unary_expr: SharedBox<'a, traversable::UnaryExpression<'a>>,
+            expr: traversable::Expression<'a>,
+            tk: &mut Token,
+        ) {
+            expr.set_parent(traversable::Parent::UnaryExpression(unary_expr), tk);
+            unary_expr.borrow_mut(tk).argument = expr;
+        }
+
+        pub fn take_argument(
+            unary_expr: SharedBox<'a, traversable::UnaryExpression<'a>>,
+            tk: &mut Token,
+        ) -> traversable::Expression<'a> {
+            let expr = mem::replace(
+                &mut unary_expr.borrow_mut(tk).argument,
+                traversable::Expression::Dummy,
+            );
+            expr.remove_parent(tk);
+            expr
+        }
+
+        pub fn parent(&self) -> traversable::Parent<'a> {
+            self.parent
+        }
+
+        pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
+            self.parent = parent;
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -260,6 +442,16 @@ mod traversable_parent {
     }
 
     link_types!(Parent, TraversableParent);
+
+    impl<'a> TraversableParent<'a> {
+        pub(super) fn is_none(&self) -> bool {
+            matches!(self, Self::None)
+        }
+
+        pub(super) fn assert_none(&self) {
+            assert!(self.is_none());
+        }
+    }
 }
 
 pub mod traversable {

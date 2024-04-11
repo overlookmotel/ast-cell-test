@@ -8,7 +8,7 @@ mod semantic;
 mod traverse;
 mod visit;
 use ast::{
-    traversable::{Expression, Parent, UnaryExpression},
+    traversable::{BinaryExpression, Expression, Parent, UnaryExpression},
     BinaryOperator, UnaryOperator,
 };
 use cell::{SharedBox, Token};
@@ -42,21 +42,17 @@ impl<'a> Traverse<'a> for TransformTypeof {
         self.walk_unary_expression(unary_expr, tk);
 
         if unary_expr.borrow(tk).operator == UnaryOperator::Typeof {
-            if let Parent::BinaryExpressionLeft(bin_expr) = unary_expr.borrow(tk).parent {
+            if let Parent::BinaryExpressionLeft(bin_expr) = unary_expr.borrow(tk).parent() {
                 if matches!(
                     bin_expr.borrow(tk).operator,
                     BinaryOperator::Equality | BinaryOperator::StrictEquality
-                ) {
-                    if let Expression::StringLiteral(str_lit) = bin_expr.borrow(tk).right {
-                        // Swap left and right of binary expression
-                        let bin_expr_mut = bin_expr.borrow_mut(tk);
-                        std::mem::swap(&mut bin_expr_mut.left, &mut bin_expr_mut.right);
-
-                        // Update parent links of left and right
-                        let temp = str_lit.borrow(tk).parent;
-                        str_lit.borrow_mut(tk).parent = unary_expr.borrow(tk).parent;
-                        unary_expr.borrow_mut(tk).parent = temp;
-                    }
+                ) && matches!(bin_expr.borrow(tk).right(), Expression::StringLiteral(_))
+                {
+                    // Swap left and right of binary expression
+                    let left = BinaryExpression::take_left(bin_expr, tk);
+                    let right = BinaryExpression::take_right(bin_expr, tk);
+                    BinaryExpression::set_left(bin_expr, right, tk);
+                    BinaryExpression::set_right(bin_expr, left, tk);
                 }
             }
         }

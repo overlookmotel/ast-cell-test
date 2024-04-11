@@ -85,7 +85,7 @@ pub trait Traverse<'a> {
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
         tk: &mut Token,
     ) {
-        self.visit_expression(&expr_stmt.borrow(tk).expression.clone(), tk);
+        self.visit_expression(&expr_stmt.borrow(tk).expression().clone(), tk);
     }
 
     fn visit_expression(&mut self, expr: &Expression<'a>, tk: &mut Token) {
@@ -106,6 +106,7 @@ pub trait Traverse<'a> {
             Expression::UnaryExpression(unary_expr) => {
                 self.visit_unary_expression(unary_expr, tk);
             }
+            Expression::Dummy => unreachable!(),
         }
     }
 
@@ -133,8 +134,8 @@ pub trait Traverse<'a> {
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
         tk: &mut Token,
     ) {
-        self.visit_expression(&bin_expr.borrow(tk).left.clone(), tk);
-        self.visit_expression(&bin_expr.borrow(tk).right.clone(), tk);
+        self.visit_expression(&bin_expr.borrow(tk).left().clone(), tk);
+        self.visit_expression(&bin_expr.borrow(tk).right().clone(), tk);
     }
 
     fn visit_unary_expression(
@@ -150,6 +151,6 @@ pub trait Traverse<'a> {
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
         tk: &mut Token,
     ) {
-        self.visit_expression(&unary_expr.borrow(tk).argument.clone(), tk);
+        self.visit_expression(&unary_expr.borrow(tk).argument().clone(), tk);
     }
 }

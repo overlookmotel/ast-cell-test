@@ -61,6 +61,7 @@ pub trait Visit<'a> {
             Expression::UnaryExpression(unary_expr) => {
                 self.visit_unary_expression(unary_expr);
             }
+            Expression::Dummy => unreachable!(),
         }
     }
 
