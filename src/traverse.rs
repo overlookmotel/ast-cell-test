@@ -4,9 +4,9 @@ use crate::{
             BinaryExpression, Expression, ExpressionStatement, IdentifierReference,
             Program as TraversableProgram, Statement, StringLiteral, UnaryExpression,
         },
-        AsTraversable, Program,
+        Program,
     },
-    cell::{SharedBox, Token},
+    cell::{GCell, SharedBox, Token},
 };
 
 /// Run transform visitor on AST.
@@ -20,8 +20,19 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
     // SAFETY: We only create one token, and it never leaves this function.
     let mut token = unsafe { Token::new_unchecked() };
 
-    // Convert AST to traversable version
-    let program = program.as_traversable();
+    // Convert AST to traversable version.
+    // SAFETY: All standard and traversable AST types are mirrors of each other, with identical layouts.
+    // This is ensured by `#[repr(C)]` on all types. Therefore one can safely be transmuted to the other.
+    // As we hold a `&mut` reference to the AST, it's guaranteed there are no other live references.
+    // We extend the lifetime of ref to `TraversableProgram` to `&'a TraversableProgram`.
+    // This is safe because the node is in the arena, and doesn't move, so the ref is valid for `'a`.
+    // `transformer` could smuggle refs out, but could not use them without a token which is only
+    // available in this function.
+    // TODO: Refs could be made invalid if the allocator is reset. Hopefully this is impossible
+    // because `Allocator::reset` takes a `&mut` ref to the allocator, so you can't hold any immut refs
+    // to data in the arena at that time. But make sure.
+    let program =
+        GCell::from_mut(unsafe { &mut *(program as *mut Program as *mut TraversableProgram) });
 
     // Run transformer on the traversable AST
     Traverse::visit_program(transformer, program, &mut token);

@@ -25,7 +25,7 @@
 
 use oxc_allocator::{Box, Vec};
 
-use crate::cell::{GCell, SharedBox, SharedVec};
+use crate::cell::{SharedBox, SharedVec};
 
 /// Macro to assert equivalence in size and alignment between standard and traversable types
 macro_rules! link_types {
@@ -48,15 +48,6 @@ macro_rules! link_types {
 
 pub trait AsTraversable {
     type Traversable;
-
-    /// Convert `&mut` ref to standard AST node to a `&mut GCell` to it's traversable counterpart type
-    fn as_traversable<'a>(&mut self) -> &'a mut GCell<Self::Traversable> {
-        // SAFETY: All standard and traversable AST types are mirrors of each other, with identical layouts.
-        // This is ensured by `#[repr(C)]` on all types. Therefore one can safely be transmuted to the other.
-        // As we hold a `&mut` reference to the AST node, it's guaranteed there are no other live references.
-        let traversable = unsafe { &mut *(self as *mut Self as *mut Self::Traversable) };
-        GCell::from_mut(traversable)
-    }
 }
 
 #[derive(Debug)]
