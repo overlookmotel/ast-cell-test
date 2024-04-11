@@ -56,12 +56,16 @@ pub struct Program<'a> {
     pub body: Vec<'a, Statement<'a>>,
 }
 
-#[repr(C)]
-pub struct TraversableProgram<'a> {
-    pub body: SharedVec<'a, TraversableStatement<'a>>,
-}
+mod traversable_program {
+    use super::*;
 
-link_types!(Program, TraversableProgram);
+    #[repr(C)]
+    pub struct TraversableProgram<'a> {
+        pub body: SharedVec<'a, traversable::Statement<'a>>,
+    }
+
+    link_types!(Program, TraversableProgram);
+}
 
 #[derive(Debug)]
 #[repr(C, u8)]
@@ -69,13 +73,17 @@ pub enum Statement<'a> {
     ExpressionStatement(Box<'a, ExpressionStatement<'a>>) = 0,
 }
 
-#[derive(Clone)]
-#[repr(C, u8)]
-pub enum TraversableStatement<'a> {
-    ExpressionStatement(SharedBox<'a, TraversableExpressionStatement<'a>>) = 0,
-}
+mod traversable_statement {
+    use super::*;
 
-link_types!(Statement, TraversableStatement);
+    #[derive(Clone)]
+    #[repr(C, u8)]
+    pub enum TraversableStatement<'a> {
+        ExpressionStatement(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 0,
+    }
+
+    link_types!(Statement, TraversableStatement);
+}
 
 #[derive(Debug)]
 #[repr(C)]
@@ -84,14 +92,18 @@ pub struct ExpressionStatement<'a> {
     pub parent: Parent<'a>,
 }
 
-#[derive(Clone)]
-#[repr(C)]
-pub struct TraversableExpressionStatement<'a> {
-    pub expression: TraversableExpression<'a>,
-    pub parent: TraversableParent<'a>,
-}
+mod traversable_expression_statement {
+    use super::*;
 
-link_types!(ExpressionStatement, TraversableExpressionStatement);
+    #[derive(Clone)]
+    #[repr(C)]
+    pub struct TraversableExpressionStatement<'a> {
+        pub expression: traversable::Expression<'a>,
+        pub parent: traversable::Parent<'a>,
+    }
+
+    link_types!(ExpressionStatement, TraversableExpressionStatement);
+}
 
 #[derive(Debug)]
 #[repr(C, u8)]
@@ -102,16 +114,20 @@ pub enum Expression<'a> {
     UnaryExpression(Box<'a, UnaryExpression<'a>>) = 3,
 }
 
-#[derive(Clone)]
-#[repr(C, u8)]
-pub enum TraversableExpression<'a> {
-    StringLiteral(SharedBox<'a, TraversableStringLiteral<'a>>) = 0,
-    Identifier(SharedBox<'a, TraversableIdentifierReference<'a>>) = 1,
-    BinaryExpression(SharedBox<'a, TraversableBinaryExpression<'a>>) = 2,
-    UnaryExpression(SharedBox<'a, TraversableUnaryExpression<'a>>) = 3,
-}
+mod traversable_expression {
+    use super::*;
 
-link_types!(Expression, TraversableExpression);
+    #[derive(Clone)]
+    #[repr(C, u8)]
+    pub enum TraversableExpression<'a> {
+        StringLiteral(SharedBox<'a, traversable::StringLiteral<'a>>) = 0,
+        Identifier(SharedBox<'a, traversable::IdentifierReference<'a>>) = 1,
+        BinaryExpression(SharedBox<'a, traversable::BinaryExpression<'a>>) = 2,
+        UnaryExpression(SharedBox<'a, traversable::UnaryExpression<'a>>) = 3,
+    }
+
+    link_types!(Expression, TraversableExpression);
+}
 
 #[derive(Debug)]
 #[repr(C)]
@@ -120,14 +136,18 @@ pub struct IdentifierReference<'a> {
     pub parent: Parent<'a>,
 }
 
-#[derive(Clone)]
-#[repr(C)]
-pub struct TraversableIdentifierReference<'a> {
-    pub name: &'a str,
-    pub parent: TraversableParent<'a>,
-}
+mod traversable_identifier_reference {
+    use super::*;
 
-link_types!(IdentifierReference, TraversableIdentifierReference);
+    #[derive(Clone)]
+    #[repr(C)]
+    pub struct TraversableIdentifierReference<'a> {
+        pub name: &'a str,
+        pub parent: traversable::Parent<'a>,
+    }
+
+    link_types!(IdentifierReference, TraversableIdentifierReference);
+}
 
 #[derive(Debug)]
 #[repr(C)]
@@ -136,14 +156,18 @@ pub struct StringLiteral<'a> {
     pub parent: Parent<'a>,
 }
 
-#[derive(Clone)]
-#[repr(C)]
-pub struct TraversableStringLiteral<'a> {
-    pub value: &'a str,
-    pub parent: TraversableParent<'a>,
-}
+mod traversable_string_literal {
+    use super::*;
 
-link_types!(StringLiteral, TraversableStringLiteral);
+    #[derive(Clone)]
+    #[repr(C)]
+    pub struct TraversableStringLiteral<'a> {
+        pub value: &'a str,
+        pub parent: traversable::Parent<'a>,
+    }
+
+    link_types!(StringLiteral, TraversableStringLiteral);
+}
 
 #[derive(Debug)]
 #[repr(C)]
@@ -154,16 +178,20 @@ pub struct BinaryExpression<'a> {
     pub parent: Parent<'a>,
 }
 
-#[derive(Clone)]
-#[repr(C)]
-pub struct TraversableBinaryExpression<'a> {
-    pub left: TraversableExpression<'a>,
-    pub operator: BinaryOperator,
-    pub right: TraversableExpression<'a>,
-    pub parent: TraversableParent<'a>,
-}
+mod traversable_binary_expression {
+    use super::*;
 
-link_types!(BinaryExpression, TraversableBinaryExpression);
+    #[derive(Clone)]
+    #[repr(C)]
+    pub struct TraversableBinaryExpression<'a> {
+        pub left: traversable::Expression<'a>,
+        pub operator: BinaryOperator,
+        pub right: traversable::Expression<'a>,
+        pub parent: traversable::Parent<'a>,
+    }
+
+    link_types!(BinaryExpression, TraversableBinaryExpression);
+}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
@@ -180,15 +208,19 @@ pub struct UnaryExpression<'a> {
     pub parent: Parent<'a>,
 }
 
-#[derive(Clone)]
-#[repr(C)]
-pub struct TraversableUnaryExpression<'a> {
-    pub operator: UnaryOperator,
-    pub argument: TraversableExpression<'a>,
-    pub parent: TraversableParent<'a>,
-}
+mod traversable_unary_expression {
+    use super::*;
 
-link_types!(UnaryExpression, TraversableUnaryExpression);
+    #[derive(Clone)]
+    #[repr(C)]
+    pub struct TraversableUnaryExpression<'a> {
+        pub operator: UnaryOperator,
+        pub argument: traversable::Expression<'a>,
+        pub parent: traversable::Parent<'a>,
+    }
+
+    link_types!(UnaryExpression, TraversableUnaryExpression);
+}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
@@ -213,27 +245,34 @@ pub enum Parent<'a> {
     UnaryExpression(*const UnaryExpression<'a>) = 5,
 }
 
-#[derive(Clone, Copy)]
-#[repr(C, u8)]
-pub enum TraversableParent<'a> {
-    None = 0,
-    Program(SharedBox<'a, TraversableProgram<'a>>) = 1,
-    ExpressionStatement(SharedBox<'a, TraversableExpressionStatement<'a>>) = 2,
-    BinaryExpressionLeft(SharedBox<'a, TraversableBinaryExpression<'a>>) = 3,
-    BinaryExpressionRight(SharedBox<'a, TraversableBinaryExpression<'a>>) = 4,
-    UnaryExpression(SharedBox<'a, TraversableUnaryExpression<'a>>) = 5,
+mod traversable_parent {
+    use super::*;
+
+    #[derive(Clone, Copy)]
+    #[repr(C, u8)]
+    pub enum TraversableParent<'a> {
+        None = 0,
+        Program(SharedBox<'a, traversable::Program<'a>>) = 1,
+        ExpressionStatement(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 2,
+        BinaryExpressionLeft(SharedBox<'a, traversable::BinaryExpression<'a>>) = 3,
+        BinaryExpressionRight(SharedBox<'a, traversable::BinaryExpression<'a>>) = 4,
+        UnaryExpression(SharedBox<'a, traversable::UnaryExpression<'a>>) = 5,
+    }
+
+    link_types!(Parent, TraversableParent);
 }
 
-link_types!(Parent, TraversableParent);
-
 pub mod traversable {
-    pub type Program<'a> = super::TraversableProgram<'a>;
-    pub type Statement<'a> = super::TraversableStatement<'a>;
-    pub type ExpressionStatement<'a> = super::TraversableExpressionStatement<'a>;
-    pub type Expression<'a> = super::TraversableExpression<'a>;
-    pub type IdentifierReference<'a> = super::TraversableIdentifierReference<'a>;
-    pub type StringLiteral<'a> = super::TraversableStringLiteral<'a>;
-    pub type BinaryExpression<'a> = super::TraversableBinaryExpression<'a>;
-    pub type UnaryExpression<'a> = super::TraversableUnaryExpression<'a>;
-    pub type Parent<'a> = super::TraversableParent<'a>;
+    use super::*;
+    pub type Program<'a> = traversable_program::TraversableProgram<'a>;
+    pub type Statement<'a> = traversable_statement::TraversableStatement<'a>;
+    pub type ExpressionStatement<'a> =
+        traversable_expression_statement::TraversableExpressionStatement<'a>;
+    pub type Expression<'a> = traversable_expression::TraversableExpression<'a>;
+    pub type IdentifierReference<'a> =
+        traversable_identifier_reference::TraversableIdentifierReference<'a>;
+    pub type StringLiteral<'a> = traversable_string_literal::TraversableStringLiteral<'a>;
+    pub type BinaryExpression<'a> = traversable_binary_expression::TraversableBinaryExpression<'a>;
+    pub type UnaryExpression<'a> = traversable_unary_expression::TraversableUnaryExpression<'a>;
+    pub type Parent<'a> = traversable_parent::TraversableParent<'a>;
 }
