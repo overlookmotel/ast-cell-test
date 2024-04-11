@@ -61,7 +61,9 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         tk: &mut Token,
     ) {
         self.parents.push(Parent::BinaryExpressionLeft(bin_expr));
-        self.walk_binary_expression(bin_expr, tk);
+        self.visit_expression(&bin_expr.borrow(tk).left.clone(), tk);
+        *self.parents.last_mut().unwrap() = Parent::BinaryExpressionRight(bin_expr);
+        self.visit_expression(&bin_expr.borrow(tk).right.clone(), tk);
         self.parents.pop();
     }
 
