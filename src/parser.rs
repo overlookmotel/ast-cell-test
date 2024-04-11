@@ -16,16 +16,11 @@ pub fn parse(alloc: &Allocator) -> &mut Program {
     }));
 
     // `typeof foo`
-    let mut unary_expr = Box(alloc.alloc(UnaryExpression {
+    let unary_expr = Box(alloc.alloc(UnaryExpression {
         operator: UnaryOperator::Typeof,
         argument: Expression::Identifier(id),
         parent: Parent::None,
     }));
-
-    let unary_expr_ptr = &*unary_expr as *const _;
-    if let Expression::Identifier(id) = &mut unary_expr.argument {
-        id.parent = Parent::UnaryExpression(unary_expr_ptr);
-    }
 
     // `'object'`
     let str_lit = Box(alloc.alloc(StringLiteral {
@@ -34,31 +29,18 @@ pub fn parse(alloc: &Allocator) -> &mut Program {
     }));
 
     // `typeof foo === 'object'` (as expression)
-    let mut binary_expr = Box(alloc.alloc(BinaryExpression {
+    let binary_expr = Box(alloc.alloc(BinaryExpression {
         operator: BinaryOperator::StrictEquality,
         left: Expression::UnaryExpression(unary_expr),
         right: Expression::StringLiteral(str_lit),
         parent: Parent::None,
     }));
 
-    let binary_expr_ptr = &*binary_expr as *const _;
-    if let Expression::UnaryExpression(unary_expr) = &mut binary_expr.left {
-        unary_expr.parent = Parent::BinaryExpressionLeft(binary_expr_ptr);
-    }
-    if let Expression::StringLiteral(str_lit) = &mut binary_expr.right {
-        str_lit.parent = Parent::BinaryExpressionRight(binary_expr_ptr);
-    }
-
     // `typeof foo === 'object'` (as expression statement)
-    let mut expr_stmt = Box(alloc.alloc(ExpressionStatement {
+    let expr_stmt = Box(alloc.alloc(ExpressionStatement {
         expression: Expression::BinaryExpression(binary_expr),
         parent: Parent::None,
     }));
-
-    let expr_stmt_ptr = &*expr_stmt as *const _;
-    if let Expression::BinaryExpression(binary_expr) = &mut expr_stmt.expression {
-        binary_expr.parent = Parent::ExpressionStatement(expr_stmt_ptr);
-    }
 
     // `typeof foo === 'object'` (as statement)
     let stmt = Statement::ExpressionStatement(expr_stmt);
@@ -67,10 +49,6 @@ pub fn parse(alloc: &Allocator) -> &mut Program {
     let mut body = Vec::new_in(alloc);
     body.push(stmt);
     let program = alloc.alloc(Program { body });
-
-    let program_ptr = program as *const _;
-    let Statement::ExpressionStatement(expr_stmt) = program.body.iter_mut().next().unwrap();
-    expr_stmt.parent = Parent::Program(program_ptr);
 
     program
 }

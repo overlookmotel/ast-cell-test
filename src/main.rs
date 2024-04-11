@@ -17,8 +17,6 @@ use semantic::semantic;
 use traverse::{transform, Traverse};
 use visit::Visit;
 
-// TODO: Implement semantic as a `Traverse` to set parents on nodes, rather than doing it in parser.
-// Doing it in parser is unsound, as the pointers are incorrectly tagged. Miri says it's UB.
 // TODO: Make `parent` fields inaccessible in standard AST, so user cannot alter them.
 
 fn main() {

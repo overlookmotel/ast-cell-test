@@ -19,11 +19,29 @@ struct Semantic<'a> {
     parents: Vec<Parent<'a>>,
 }
 
+impl<'a> Semantic<'a> {
+    fn parent(&self) -> Parent<'a> {
+        *self.parents.last().unwrap()
+    }
+
+    fn push_parent(&mut self, parent: Parent<'a>) {
+        self.parents.push(parent)
+    }
+
+    fn pop_parent(&mut self) -> Parent<'a> {
+        self.parents.pop().unwrap()
+    }
+
+    fn replace_parent(&mut self, parent: Parent<'a>) {
+        *self.parents.last_mut().unwrap() = parent;
+    }
+}
+
 impl<'a> Traverse<'a> for Semantic<'a> {
     fn visit_program(&mut self, program: SharedBox<'a, TraversableProgram<'a>>, tk: &mut Token) {
-        self.parents.push(Parent::Program(program));
+        self.push_parent(Parent::Program(program));
         self.walk_program(program, tk);
-        self.parents.pop();
+        self.pop_parent();
     }
 
     fn visit_statement(&mut self, stmt: &Statement<'a>, tk: &mut Token) {
@@ -35,9 +53,10 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
         tk: &mut Token,
     ) {
-        self.parents.push(Parent::ExpressionStatement(expr_stmt));
+        expr_stmt.borrow_mut(tk).parent = self.parent();
+        self.push_parent(Parent::ExpressionStatement(expr_stmt));
         self.walk_expression_statement(expr_stmt, tk);
-        self.parents.pop();
+        self.pop_parent();
     }
 
     fn visit_expression(&mut self, expr: &Expression<'a>, tk: &mut Token) {
@@ -60,11 +79,12 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
         tk: &mut Token,
     ) {
-        self.parents.push(Parent::BinaryExpressionLeft(bin_expr));
+        bin_expr.borrow_mut(tk).parent = self.parent();
+        self.push_parent(Parent::BinaryExpressionLeft(bin_expr));
         self.visit_expression(&bin_expr.borrow(tk).left.clone(), tk);
-        *self.parents.last_mut().unwrap() = Parent::BinaryExpressionRight(bin_expr);
+        self.replace_parent(Parent::BinaryExpressionRight(bin_expr));
         self.visit_expression(&bin_expr.borrow(tk).right.clone(), tk);
-        self.parents.pop();
+        self.pop_parent();
     }
 
     fn visit_unary_expression(
@@ -72,6 +92,9 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
         tk: &mut Token,
     ) {
+        unary_expr.borrow_mut(tk).parent = self.parent();
+        self.push_parent(Parent::UnaryExpression(unary_expr));
         self.walk_unary_expression(unary_expr, tk);
+        self.pop_parent();
     }
 }
