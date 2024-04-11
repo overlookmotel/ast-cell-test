@@ -378,12 +378,20 @@ mod traversable_identifier_reference {
     #[repr(C)]
     pub struct TraversableIdentifierReference<'a> {
         pub name: &'a str,
-        pub parent: traversable::Parent<'a>,
+        pub(super) parent: traversable::Parent<'a>,
     }
 
     link_types!(IdentifierReference, TraversableIdentifierReference);
 
-    // TODO: Make `parent` field inaccessible outside this file
+    impl<'a> traversable::IdentifierReference<'a> {
+        pub fn parent(&self) -> traversable::Parent<'a> {
+            self.parent
+        }
+
+        pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
+            self.parent = parent;
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -399,12 +407,20 @@ mod traversable_string_literal {
     #[repr(C)]
     pub struct TraversableStringLiteral<'a> {
         pub value: &'a str,
-        pub parent: traversable::Parent<'a>,
+        pub(super) parent: traversable::Parent<'a>,
     }
 
     link_types!(StringLiteral, TraversableStringLiteral);
 
-    // TODO: Make `parent` field inaccessible outside this file
+    impl<'a> traversable::StringLiteral<'a> {
+        pub fn parent(&self) -> traversable::Parent<'a> {
+            self.parent
+        }
+
+        pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
+            self.parent = parent;
+        }
+    }
 }
 
 #[derive(Debug)]
