@@ -290,7 +290,7 @@ mod traversable_expression {
 
     link_types!(Expression, TraversableExpression);
 
-    impl<'a> TraversableExpression<'a> {
+    impl<'a> traversable::Expression<'a> {
         pub(super) fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
             use TraversableExpression::*;
             match self {
