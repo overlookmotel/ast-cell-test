@@ -68,7 +68,8 @@ pub trait Traverse<'a> {
         match stmt {
             Statement::ExpressionStatement(expr_stmt) => {
                 self.visit_expression_statement(expr_stmt, tk)
-            } // _ => {} // No other variants at present
+            }
+            Statement::Dummy => unreachable!(),
         }
     }
 

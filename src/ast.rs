@@ -177,9 +177,26 @@ mod traversable_program {
 #[derive(Debug)]
 #[repr(C, u8)]
 pub enum Statement<'a> {
-    ExpressionStatement(Box<'a, ExpressionStatement<'a>>) = 0,
+    Dummy = 0,
+    ExpressionStatement(Box<'a, ExpressionStatement<'a>>) = 1,
 }
 
+// `Dummy` variant is a temporary placeholder indicating that a node has been removed from the AST.
+// A valid AST should not contain any dummy nodes when transformation is complete, but it's required
+// to have this placeholder so you can remove a node from the AST in order to insert it somewhere else
+// instead. It's expected you'll replace the placeholder again with some other node.
+// Failure to do so will not lead to memory unsafety or UB, but it's not a valid AST and other tools
+// should probably panic if they find one.
+//
+// I cannot see any way to statically prevent this. `take` methods could return a marker type which
+// panics in it's `Drop` impl. When inserting a node back into same place in the AST again, this marker
+// type would be consumed without dropping it. If nothing is reinserted, the marker type will get dropped
+// at end of the function where it was created, and will panic.
+// But that is a runtime panic not const time, so while it's probably better to trigger the panic early,
+// during the transform, as you'll be able to see where the mistake is, it's still not ideal.
+// Rust should not include the pannicking `drop` function in output if it can prove it won't be called.
+// But in any function which can panic, it will have to include it as `drop` gets called during unwinding.
+// This is probably not solveable.
 mod traversable_statement {
     use super::*;
 
@@ -189,10 +206,35 @@ mod traversable_statement {
     #[derive(Clone)]
     #[repr(C, u8)]
     pub enum TraversableStatement<'a> {
-        ExpressionStatement(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 0,
+        Dummy = 0,
+        ExpressionStatement(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 1,
     }
 
     link_types!(Statement, TraversableStatement);
+
+    impl<'a> traversable::Statement<'a> {
+        pub(super) fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
+            use TraversableStatement::*;
+            match self {
+                ExpressionStatement(expr_stmt) => {
+                    let stmt = expr_stmt.borrow_mut(tk);
+                    stmt.parent.assert_none();
+                    stmt.parent = parent;
+                }
+                Dummy => unreachable!("Cannot set parent of a dummy Statement"),
+            }
+        }
+
+        pub(super) fn remove_parent(&self, tk: &mut Token) {
+            use TraversableStatement::*;
+            match self {
+                ExpressionStatement(expr_stmt) => {
+                    expr_stmt.borrow_mut(tk).parent = traversable::Parent::None;
+                }
+                Dummy => unreachable!("Cannot set parent of a dummy Statement"),
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -259,22 +301,6 @@ pub enum Expression<'a> {
     UnaryExpression(Box<'a, UnaryExpression<'a>>) = 4,
 }
 
-// `Dummy` variant is a temporary placeholder indicating that a node has been removed from the AST.
-// A valid AST should not contain any dummy nodes when transformation is complete, but it's required
-// to have this placeholder so you can remove a node from the AST in order to insert it somewhere else
-// instead. It's expected you'll replace the placeholder again with some other node.
-// Failure to do so will not lead to memory unsafety or UB, but it's not a valid AST and other tools
-// should probably panic if they find one.
-//
-// I cannot see any way to statically prevent this. `take` methods could return a marker type which
-// panics in it's `Drop` impl. When inserting a node back into same place in the AST again, this marker
-// type would be consumed without dropping it. If nothing is reinserted, the marker type will get dropped
-// at end of the function where it was created, and will panic.
-// But that is a runtime panic not const time, so while it's probably better to trigger the panic early,
-// during the transform, as you'll be able to see where the mistake is, it's still not ideal.
-// Rust should not include the pannicking `drop` function in output if it can prove it won't be called.
-// But in any function which can panic, it will have to include it as `drop` gets called during unwinding.
-// This is probably not solveable.
 mod traversable_expression {
     use super::*;
 

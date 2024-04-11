@@ -31,7 +31,8 @@ pub trait Visit<'a> {
 
     fn walk_statement(&mut self, stmt: &Statement<'a>) {
         match stmt {
-            Statement::ExpressionStatement(expr_stmt) => self.visit_expression_statement(expr_stmt), // _ => {} // No other variants at present
+            Statement::ExpressionStatement(expr_stmt) => self.visit_expression_statement(expr_stmt),
+            Statement::Dummy => unreachable!(),
         }
     }
 
