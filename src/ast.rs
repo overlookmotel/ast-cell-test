@@ -105,6 +105,9 @@
 // and apply `#[repr(C)]` (for structs) / `#[repr(C, u8)]` (for enums) programmatically,
 // so can't get forgotten. Generate accessor methods (`take_*` etc) with a macro/codegen too.
 
+// TODO: Place `parent` field in all types in same position to remove branches when setting/getting
+// parent for an `Expression` or `Statement`.
+
 use std::mem;
 
 use oxc_allocator::{Box, Vec};
@@ -200,9 +203,6 @@ pub enum Statement<'a> {
 mod traversable_statement {
     use super::*;
 
-    // NB: Clone does not clone the "payload", just the reference to it.
-    // i.e. Cloning `TraversableStatement::ExpressionStatement` creates another reference
-    // to the *same* `ExpressionStatement`. It doesn't create a new `ExpressionStatement` instance.
     #[derive(Clone)]
     #[repr(C, u8)]
     pub enum TraversableStatement<'a> {
@@ -382,6 +382,8 @@ mod traversable_identifier_reference {
     }
 
     link_types!(IdentifierReference, TraversableIdentifierReference);
+
+    // TODO: Make `parent` field inaccessible outside this file
 }
 
 #[derive(Debug)]
@@ -401,6 +403,8 @@ mod traversable_string_literal {
     }
 
     link_types!(StringLiteral, TraversableStringLiteral);
+
+    // TODO: Make `parent` field inaccessible outside this file
 }
 
 #[derive(Debug)]
