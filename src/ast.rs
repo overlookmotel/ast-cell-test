@@ -416,16 +416,24 @@ pub enum UnaryOperator {
     Delete = 6,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 #[repr(C, u8)]
 pub enum Parent<'a> {
     None = 0,
-    Program(*const Program<'a>) = 1,
-    ExpressionStatement(*const ExpressionStatement<'a>) = 2,
-    BinaryExpressionLeft(*const BinaryExpression<'a>) = 3,
-    BinaryExpressionRight(*const BinaryExpression<'a>) = 4,
-    UnaryExpression(*const UnaryExpression<'a>) = 5,
+    Program(ParentPointer<Program<'a>>) = 1,
+    ExpressionStatement(ParentPointer<ExpressionStatement<'a>>) = 2,
+    BinaryExpressionLeft(ParentPointer<BinaryExpression<'a>>) = 3,
+    BinaryExpressionRight(ParentPointer<BinaryExpression<'a>>) = 4,
+    UnaryExpression(ParentPointer<UnaryExpression<'a>>) = 5,
 }
+
+/// Wrapper around pointer to parent.
+/// Type is opaque to external consumer. Pointer it contains cannot be read or written.
+/// Purpose is to be the substitute for `&GCell` which this is transmuted to in the traversable AST.
+/// In the traversable AST, it is possible (and necessary) to alter parent.
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct ParentPointer<T>(*const T);
 
 mod traversable_parent {
     use super::*;
