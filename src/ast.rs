@@ -84,6 +84,9 @@ pub enum Statement<'a> {
 mod traversable_statement {
     use super::*;
 
+    // NB: Clone does not clone the "payload", just the reference to it.
+    // i.e. Cloning `TraversableStatement::ExpressionStatement` creates another reference
+    // to the *same* `ExpressionStatement`. It doesn't create a new `ExpressionStatement` instance.
     #[derive(Clone)]
     #[repr(C, u8)]
     pub enum TraversableStatement<'a> {
@@ -103,7 +106,6 @@ pub struct ExpressionStatement<'a> {
 mod traversable_expression_statement {
     use super::*;
 
-    #[derive(Clone)]
     #[repr(C)]
     pub struct TraversableExpressionStatement<'a> {
         pub(super) expression: traversable::Expression<'a>,
@@ -232,7 +234,6 @@ pub struct IdentifierReference<'a> {
 mod traversable_identifier_reference {
     use super::*;
 
-    #[derive(Clone)]
     #[repr(C)]
     pub struct TraversableIdentifierReference<'a> {
         pub name: &'a str,
@@ -252,7 +253,6 @@ pub struct StringLiteral<'a> {
 mod traversable_string_literal {
     use super::*;
 
-    #[derive(Clone)]
     #[repr(C)]
     pub struct TraversableStringLiteral<'a> {
         pub value: &'a str,
@@ -274,7 +274,6 @@ pub struct BinaryExpression<'a> {
 mod traversable_binary_expression {
     use super::*;
 
-    #[derive(Clone)]
     #[repr(C)]
     pub struct TraversableBinaryExpression<'a> {
         pub(super) left: traversable::Expression<'a>,
@@ -364,7 +363,6 @@ pub struct UnaryExpression<'a> {
 mod traversable_unary_expression {
     use super::*;
 
-    #[derive(Clone)]
     #[repr(C)]
     pub struct TraversableUnaryExpression<'a> {
         pub operator: UnaryOperator,
