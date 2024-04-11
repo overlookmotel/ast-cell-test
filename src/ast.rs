@@ -136,6 +136,23 @@ pub trait AsTraversable {
     type Traversable;
 }
 
+/// Module namespace for transferrable AST node types
+pub mod traversable {
+    use super::*;
+
+    pub type Program<'a> = traversable_program::TraversableProgram<'a>;
+    pub type Statement<'a> = traversable_statement::TraversableStatement<'a>;
+    pub type ExpressionStatement<'a> =
+        traversable_expression_statement::TraversableExpressionStatement<'a>;
+    pub type Expression<'a> = traversable_expression::TraversableExpression<'a>;
+    pub type IdentifierReference<'a> =
+        traversable_identifier_reference::TraversableIdentifierReference<'a>;
+    pub type StringLiteral<'a> = traversable_string_literal::TraversableStringLiteral<'a>;
+    pub type BinaryExpression<'a> = traversable_binary_expression::TraversableBinaryExpression<'a>;
+    pub type UnaryExpression<'a> = traversable_unary_expression::TraversableUnaryExpression<'a>;
+    pub type Parent<'a> = traversable_parent::TraversableParent<'a>;
+}
+
 #[derive(Debug)]
 #[repr(C)]
 pub struct Program<'a> {
@@ -581,21 +598,4 @@ mod traversable_parent {
             assert!(self.is_none());
         }
     }
-}
-
-/// Module namespace for transferrable AST node types
-pub mod traversable {
-    use super::*;
-
-    pub type Program<'a> = traversable_program::TraversableProgram<'a>;
-    pub type Statement<'a> = traversable_statement::TraversableStatement<'a>;
-    pub type ExpressionStatement<'a> =
-        traversable_expression_statement::TraversableExpressionStatement<'a>;
-    pub type Expression<'a> = traversable_expression::TraversableExpression<'a>;
-    pub type IdentifierReference<'a> =
-        traversable_identifier_reference::TraversableIdentifierReference<'a>;
-    pub type StringLiteral<'a> = traversable_string_literal::TraversableStringLiteral<'a>;
-    pub type BinaryExpression<'a> = traversable_binary_expression::TraversableBinaryExpression<'a>;
-    pub type UnaryExpression<'a> = traversable_unary_expression::TraversableUnaryExpression<'a>;
-    pub type Parent<'a> = traversable_parent::TraversableParent<'a>;
 }
