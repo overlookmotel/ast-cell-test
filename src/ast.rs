@@ -48,6 +48,8 @@ macro_rules! link_types {
     };
 }
 
+/// Trait to link "standard" AST types to their "traversable" counterparts.
+/// e.g. `Expression::Traversable` = `TraverableExpression`
 pub trait AsTraversable {
     type Traversable;
 }
@@ -58,6 +60,8 @@ pub struct Program<'a> {
     pub body: Vec<'a, Statement<'a>>,
 }
 
+// NB: Traversable types are defined in modules to avoid exporting them outside of `traversable`
+// namespace, and because this is likely how we'd want a macro to spit it out.
 mod traversable_program {
     use super::*;
 
