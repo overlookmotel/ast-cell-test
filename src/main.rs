@@ -68,7 +68,8 @@ fn test_no_ub_transforming() {
 
 #[test]
 fn test_no_ub_mutating_standard_ast_after_transform() {
-    use ast::{Expression, Statement};
+    use ast::{Expression, IdentifierReference, Parent, Statement, StringLiteral};
+    use oxc_allocator::Box;
     use std::mem;
 
     let alloc = Allocator::default();
@@ -91,4 +92,35 @@ fn test_no_ub_mutating_standard_ast_after_transform() {
     let left = mem::replace(&mut bin_expr.left, Expression::Dummy);
     let right = mem::replace(&mut bin_expr.right, left);
     bin_expr.left = right;
+
+    let unary_expr = if let Expression::UnaryExpression(unary_expr) = &mut bin_expr.left {
+        &mut **unary_expr
+    } else {
+        unreachable!();
+    };
+    unary_expr.operator = UnaryOperator::UnaryNegation;
+
+    let id = if let Expression::Identifier(unary_expr) = &mut unary_expr.argument {
+        &mut **unary_expr
+    } else {
+        unreachable!();
+    };
+    id.name = "bar";
+
+    unary_expr.argument = Expression::StringLiteral(Box(alloc.alloc(StringLiteral {
+        value: "foo",
+        parent: Parent::None,
+    })));
+
+    let str_lit = if let Expression::StringLiteral(str_lit) = &mut bin_expr.right {
+        &mut **str_lit
+    } else {
+        unreachable!();
+    };
+    str_lit.value = "string";
+
+    bin_expr.right = Expression::Identifier(Box(alloc.alloc(IdentifierReference {
+        name: "qux",
+        parent: Parent::None,
+    })));
 }
