@@ -168,6 +168,8 @@ pub mod traversable_traits {
     pub use traversable_expression_statement::ExpressionStatementAccess;
     pub use traversable_binary_expression::BinaryExpressionAccess;
     pub use traversable_unary_expression::UnaryExpressionAccess;
+
+    pub use super::Copyable;
 }
 
 #[derive(Debug)]
@@ -265,7 +267,8 @@ pub enum Statement<'a> {
 mod traversable_statement {
     use super::*;
 
-    #[derive(Clone)]
+    // NB: `Copy` because it's only 16 bytes
+    #[derive(Clone, Copy)]
     #[repr(C, u8)]
     pub enum TraversableStatement<'a> {
         Dummy = 0,
@@ -297,6 +300,8 @@ mod traversable_statement {
             }
         }
     }
+
+    impl<'a> Copyable for traversable::Statement<'a> {}
 }
 
 #[derive(Debug)]
@@ -318,8 +323,8 @@ mod traversable_expression_statement {
     link_types!(ExpressionStatement, TraversableExpressionStatement);
 
     impl<'a> traversable::ExpressionStatement<'a> {
-        pub fn expression(&self) -> &traversable::Expression<'a> {
-            &self.expression
+        pub fn expression(&self) -> traversable::Expression<'a> {
+            self.expression
         }
 
         pub fn parent(&self) -> traversable::Parent<'a> {
@@ -368,7 +373,8 @@ pub enum Expression<'a> {
 mod traversable_expression {
     use super::*;
 
-    #[derive(Clone)]
+    // NB: `Copy` because it's only 16 bytes
+    #[derive(Clone, Copy)]
     #[repr(C, u8)]
     pub enum TraversableExpression<'a> {
         Dummy = 0,
@@ -427,6 +433,8 @@ mod traversable_expression {
             }
         }
     }
+
+    impl<'a> Copyable for traversable::Expression<'a> {}
 }
 
 #[derive(Debug)]
@@ -514,12 +522,12 @@ mod traversable_binary_expression {
     link_types!(BinaryExpression, TraversableBinaryExpression);
 
     impl<'a> traversable::BinaryExpression<'a> {
-        pub fn left(&self) -> &traversable::Expression<'a> {
-            &self.left
+        pub fn left(&self) -> traversable::Expression<'a> {
+            self.left
         }
 
-        pub fn right(&self) -> &traversable::Expression<'a> {
-            &self.right
+        pub fn right(&self) -> traversable::Expression<'a> {
+            self.right
         }
 
         pub fn parent(self) -> traversable::Parent<'a> {
@@ -599,8 +607,8 @@ mod traversable_unary_expression {
     link_types!(UnaryExpression, TraversableUnaryExpression);
 
     impl<'a> traversable::UnaryExpression<'a> {
-        pub fn argument(&self) -> &traversable::Expression<'a> {
-            &self.argument
+        pub fn argument(&self) -> traversable::Expression<'a> {
+            self.argument
         }
 
         pub fn parent(&self) -> traversable::Parent<'a> {
@@ -689,6 +697,7 @@ pub struct ParentPointer<T>(*const T);
 mod traversable_parent {
     use super::*;
 
+    // NB: `Copy` because it's only 16 bytes
     #[derive(Clone, Copy)]
     #[repr(C, u8)]
     pub enum TraversableParent<'a> {
@@ -710,5 +719,21 @@ mod traversable_parent {
         pub(super) fn assert_none(&self) {
             assert!(self.is_none());
         }
+    }
+}
+
+/// Convenience trait to copy `Copy` types without a temp var where borrow-checker
+/// complains otherwise. Equivalent to `.clone()`, but clippy doesn't flag it.
+/// It's also useful to use `.copy()` instead of `.clone()` to indicate it's not
+/// an expensive operation.
+pub trait Copyable {
+    #[inline]
+    fn copy(self) -> Self
+    where
+        Self: Copy,
+    {
+        let me = self;
+        #[allow(clippy::let_and_return)]
+        me
     }
 }

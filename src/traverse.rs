@@ -4,6 +4,7 @@ use crate::{
             BinaryExpression, Expression, ExpressionStatement, IdentifierReference,
             Program as TraversableProgram, Statement, StringLiteral, UnaryExpression,
         },
+        traversable_traits::*,
         Program,
     },
     cell::{GCell, SharedBox, Token},
@@ -54,17 +55,17 @@ pub trait Traverse<'a> {
         // could add more nodes to the `Vec`
         let mut index = 0;
         while index < program.borrow(tk).body_len() {
-            let stmt = program.borrow(tk).body_item(index).borrow(tk).clone();
-            self.visit_statement(&stmt, tk);
+            let stmt = program.borrow(tk).body_item(index).borrow(tk).copy();
+            self.visit_statement(stmt, tk);
             index += 1;
         }
     }
 
-    fn visit_statement(&mut self, stmt: &Statement<'a>, tk: &mut Token) {
+    fn visit_statement(&mut self, stmt: Statement<'a>, tk: &mut Token) {
         self.walk_statement(stmt, tk)
     }
 
-    fn walk_statement(&mut self, stmt: &Statement<'a>, tk: &mut Token) {
+    fn walk_statement(&mut self, stmt: Statement<'a>, tk: &mut Token) {
         match stmt {
             Statement::ExpressionStatement(expr_stmt) => {
                 self.visit_expression_statement(expr_stmt, tk)
@@ -86,14 +87,14 @@ pub trait Traverse<'a> {
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
         tk: &mut Token,
     ) {
-        self.visit_expression(&expr_stmt.borrow(tk).expression().clone(), tk);
+        self.visit_expression(expr_stmt.borrow(tk).expression(), tk);
     }
 
-    fn visit_expression(&mut self, expr: &Expression<'a>, tk: &mut Token) {
+    fn visit_expression(&mut self, expr: Expression<'a>, tk: &mut Token) {
         self.walk_expression(expr, tk);
     }
 
-    fn walk_expression(&mut self, expr: &Expression<'a>, tk: &mut Token) {
+    fn walk_expression(&mut self, expr: Expression<'a>, tk: &mut Token) {
         match expr {
             Expression::Identifier(id) => {
                 self.visit_identifier_reference(id, tk);
@@ -135,8 +136,8 @@ pub trait Traverse<'a> {
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
         tk: &mut Token,
     ) {
-        self.visit_expression(&bin_expr.borrow(tk).left().clone(), tk);
-        self.visit_expression(&bin_expr.borrow(tk).right().clone(), tk);
+        self.visit_expression(bin_expr.borrow(tk).left(), tk);
+        self.visit_expression(bin_expr.borrow(tk).right(), tk);
     }
 
     fn visit_unary_expression(
@@ -152,6 +153,6 @@ pub trait Traverse<'a> {
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
         tk: &mut Token,
     ) {
-        self.visit_expression(&unary_expr.borrow(tk).argument().clone(), tk);
+        self.visit_expression(unary_expr.borrow(tk).argument(), tk);
     }
 }

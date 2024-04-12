@@ -27,7 +27,7 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         self.walk_program(program, tk);
     }
 
-    fn visit_statement(&mut self, stmt: &Statement<'a>, tk: &mut Token) {
+    fn visit_statement(&mut self, stmt: Statement<'a>, tk: &mut Token) {
         self.walk_statement(stmt, tk)
     }
 
@@ -41,7 +41,7 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         self.walk_expression_statement(expr_stmt, tk);
     }
 
-    fn visit_expression(&mut self, expr: &Expression<'a>, tk: &mut Token) {
+    fn visit_expression(&mut self, expr: Expression<'a>, tk: &mut Token) {
         self.walk_expression(expr, tk);
     }
 
@@ -63,9 +63,9 @@ impl<'a> Traverse<'a> for Semantic<'a> {
     ) {
         unsafe { bin_expr.borrow_mut(tk).set_parent(self.current_parent) };
         self.current_parent = Parent::BinaryExpressionLeft(bin_expr);
-        self.visit_expression(&bin_expr.borrow(tk).left().clone(), tk);
+        self.visit_expression(bin_expr.borrow(tk).left(), tk);
         self.current_parent = Parent::BinaryExpressionRight(bin_expr);
-        self.visit_expression(&bin_expr.borrow(tk).right().clone(), tk);
+        self.visit_expression(bin_expr.borrow(tk).right(), tk);
     }
 
     fn visit_unary_expression(
