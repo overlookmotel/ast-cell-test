@@ -164,12 +164,12 @@ pub mod traversable {
 pub mod traversable_traits {
     use super::*;
 
-    pub use traversable_program::ProgramAccess;
-    pub use traversable_expression_statement::ExpressionStatementAccess;
-    pub use traversable_identifier_reference::IdentifierReferenceAccess;
-    pub use traversable_string_literal::StringLiteralAccess;
-    pub use traversable_binary_expression::BinaryExpressionAccess;
-    pub use traversable_unary_expression::UnaryExpressionAccess;
+    pub use traversable_program::SharedProgram;
+    pub use traversable_expression_statement::SharedExpressionStatement;
+    pub use traversable_identifier_reference::SharedIdentifierReference;
+    pub use traversable_string_literal::SharedStringLiteral;
+    pub use traversable_binary_expression::SharedBinaryExpression;
+    pub use traversable_unary_expression::SharedUnaryExpression;
 
     pub use super::Copyable;
 }
@@ -207,7 +207,7 @@ mod traversable_program {
         }
     }
 
-    pub trait ProgramAccess<'a> {
+    pub trait SharedProgram<'a> {
         fn body_len(self, tk: &Token) -> usize;
         fn body_item(self, index: usize, tk: &Token) -> SharedBox<traversable::Statement<'a>>;
         fn set_body_item(self, index: usize, stmt: traversable::Statement<'a>, tk: &mut Token);
@@ -215,7 +215,7 @@ mod traversable_program {
         fn push_body_item(self, stmt: traversable::Statement<'a>, tk: &mut Token);
     }
 
-    impl<'a> ProgramAccess<'a> for SharedBox<'a, traversable::Program<'a>> {
+    impl<'a> SharedProgram<'a> for SharedBox<'a, traversable::Program<'a>> {
         /// Convenience method for getting `body.len()` from a ref.
         fn body_len(self, tk: &Token) -> usize {
             self.borrow(tk).body.len()
@@ -355,14 +355,14 @@ mod traversable_expression_statement {
         }
     }
 
-    pub trait ExpressionStatementAccess<'a> {
+    pub trait SharedExpressionStatement<'a> {
         fn parent(self, tk: &Token) -> traversable::Parent<'a>;
         fn expression(self, tk: &Token) -> traversable::Expression<'a>;
         fn set_expression(self, expr: traversable::Expression<'a>, tk: &mut Token);
         fn take_expression(self, tk: &mut Token) -> traversable::Expression<'a>;
     }
 
-    impl<'a> ExpressionStatementAccess<'a> for SharedBox<'a, traversable::ExpressionStatement<'a>> {
+    impl<'a> SharedExpressionStatement<'a> for SharedBox<'a, traversable::ExpressionStatement<'a>> {
         /// Convenience method for getting `parent` from a ref.
         fn parent(self, tk: &Token) -> traversable::Parent<'a> {
             self.borrow(tk).parent
@@ -498,11 +498,11 @@ mod traversable_identifier_reference {
         }
     }
 
-    pub trait IdentifierReferenceAccess<'a> {
+    pub trait SharedIdentifierReference<'a> {
         fn parent(self, tk: &Token) -> traversable::Parent<'a>;
     }
 
-    impl<'a> IdentifierReferenceAccess<'a> for SharedBox<'a, traversable::IdentifierReference<'a>> {
+    impl<'a> SharedIdentifierReference<'a> for SharedBox<'a, traversable::IdentifierReference<'a>> {
         /// Convenience method for getting `parent` from a ref.
         fn parent(self, tk: &Token) -> traversable::Parent<'a> {
             self.borrow(tk).parent
@@ -540,11 +540,11 @@ mod traversable_string_literal {
         }
     }
 
-    pub trait StringLiteralAccess<'a> {
+    pub trait SharedStringLiteral<'a> {
         fn parent(self, tk: &Token) -> traversable::Parent<'a>;
     }
 
-    impl<'a> StringLiteralAccess<'a> for SharedBox<'a, traversable::StringLiteral<'a>> {
+    impl<'a> SharedStringLiteral<'a> for SharedBox<'a, traversable::StringLiteral<'a>> {
         /// Convenience method for getting `parent` from a ref.
         fn parent(self, tk: &Token) -> traversable::Parent<'a> {
             self.borrow(tk).parent
@@ -594,7 +594,7 @@ mod traversable_binary_expression {
         }
     }
 
-    pub trait BinaryExpressionAccess<'a> {
+    pub trait SharedBinaryExpression<'a> {
         fn parent(self, tk: &Token) -> traversable::Parent<'a>;
         fn left(self, tk: &mut Token) -> traversable::Expression<'a>;
         fn right(self, tk: &mut Token) -> traversable::Expression<'a>;
@@ -605,7 +605,7 @@ mod traversable_binary_expression {
         fn take_right(self, tk: &mut Token) -> traversable::Expression<'a>;
     }
 
-    impl<'a> BinaryExpressionAccess<'a> for SharedBox<'a, traversable::BinaryExpression<'a>> {
+    impl<'a> SharedBinaryExpression<'a> for SharedBox<'a, traversable::BinaryExpression<'a>> {
         /// Convenience method for getting `parent` from a ref.
         fn parent(self, tk: &Token) -> traversable::Parent<'a> {
             self.borrow(tk).parent
@@ -699,7 +699,7 @@ mod traversable_unary_expression {
         }
     }
 
-    pub trait UnaryExpressionAccess<'a> {
+    pub trait SharedUnaryExpression<'a> {
         fn parent(self, tk: &Token) -> traversable::Parent<'a>;
         fn argument(self, tk: &mut Token) -> traversable::Expression<'a>;
         fn operator(self, tk: &mut Token) -> UnaryOperator;
@@ -707,7 +707,7 @@ mod traversable_unary_expression {
         fn take_argument(self, tk: &mut Token) -> traversable::Expression<'a>;
     }
 
-    impl<'a> UnaryExpressionAccess<'a> for SharedBox<'a, traversable::UnaryExpression<'a>> {
+    impl<'a> SharedUnaryExpression<'a> for SharedBox<'a, traversable::UnaryExpression<'a>> {
         /// Convenience method for getting `parent` from a ref.
         fn parent(self, tk: &Token) -> traversable::Parent<'a> {
             self.borrow(tk).parent
