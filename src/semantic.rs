@@ -32,7 +32,9 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
         tk: &mut Token,
     ) {
-        unsafe { expr_stmt.borrow_mut(tk).set_parent(self.current_parent) };
+        let expr_stmt_mut = expr_stmt.borrow_mut(tk);
+        // SAFETY: We are here establishing the invariant of correct parent tracking
+        unsafe { expr_stmt_mut.set_parent(self.current_parent) };
         self.current_parent = Parent::ExpressionStatement(expr_stmt);
         self.walk_expression_statement(expr_stmt, tk);
     }
@@ -53,7 +55,9 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
         tk: &mut Token,
     ) {
-        unsafe { bin_expr.borrow_mut(tk).set_parent(self.current_parent) };
+        let bin_expr_mut = bin_expr.borrow_mut(tk);
+        // SAFETY: We are here establishing the invariant of correct parent tracking
+        unsafe { bin_expr_mut.set_parent(self.current_parent) };
         self.current_parent = Parent::BinaryExpressionLeft(bin_expr);
         self.visit_expression(bin_expr.borrow(tk).left(), tk);
         self.current_parent = Parent::BinaryExpressionRight(bin_expr);
@@ -65,7 +69,9 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
         tk: &mut Token,
     ) {
-        unsafe { unary_expr.borrow_mut(tk).set_parent(self.current_parent) };
+        let unary_expr_mut = unary_expr.borrow_mut(tk);
+        // SAFETY: We are here establishing the invariant of correct parent tracking
+        unsafe { unary_expr_mut.set_parent(self.current_parent) };
         self.current_parent = Parent::UnaryExpression(unary_expr);
         self.walk_unary_expression(unary_expr, tk);
     }
