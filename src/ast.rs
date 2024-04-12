@@ -116,6 +116,13 @@
 // TODO: Place `parent` field in all types in same position to remove branches when setting/getting
 // parent for an `Expression` or `Statement`.
 
+// TODO: Re-order fields in AST types so they are efficiently packed with padding only at the end.
+// When types were `#[repr(rust)]`, compiler re-ordered the fields itself, but since they're now
+// `#[repr(C)]`, we need to do it ourselves. We could write a macro which produces code to inspect
+// type layouts at compile time and error if there's padding in middle of a struct.
+// This isn't mission-critical for safety, just a perf optimization, so the macro could be behind
+// a feature, disabled by default, and we just compile with it enabled from time to time.
+
 use std::mem;
 
 use oxc_allocator::{Box, Vec};
@@ -238,8 +245,9 @@ mod traversable_program {
         fn set_body_item(self, index: usize, stmt: traversable::Statement<'a>, tk: &mut Token) {
             stmt.set_parent(traversable::Parent::Program(self), tk);
 
-            // TODO: We wouldn't need this unsafe if `oxc_allocator::Vec` implemented `IndexMut`
-            // (which it could)
+            // `unsafe` here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
+            // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
+            // TODO: Do that instead and remove this `unsafe`.
             assert!(index < self.borrow(tk).body.len());
             // SAFETY: We checked `index` is in bounds.
             let item = unsafe { &mut *self.borrow_mut(tk).body.as_mut_ptr().add(index) };
@@ -247,8 +255,9 @@ mod traversable_program {
         }
 
         fn take_body_item(self, index: usize, tk: &mut Token) -> traversable::Statement<'a> {
-            // TODO: We wouldn't need this unsafe if `oxc_allocator::Vec` implemented `IndexMut`
-            // (which it could)
+            // `unsafe` here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
+            // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
+            // TODO: Do that instead and remove this `unsafe`.
             assert!(index < self.borrow(tk).body.len());
             // SAFETY: We checked `index` is in bounds.
             let item = unsafe { &mut *self.borrow_mut(tk).body.as_mut_ptr().add(index) };
