@@ -8,7 +8,8 @@ mod semantic;
 mod traverse;
 mod visit;
 use ast::{
-    traversable::{BinaryExpression, Expression, Parent, UnaryExpression},
+    traversable::{Expression, Parent, UnaryExpression},
+    traversable_traits::*,
     BinaryOperator, UnaryOperator,
 };
 use cell::{SharedBox, Token};
@@ -50,10 +51,10 @@ impl<'a> Traverse<'a> for TransformTypeof {
                 ) && matches!(bin_expr.borrow(tk).right(), Expression::StringLiteral(_))
                 {
                     // Swap left and right of binary expression
-                    let left = BinaryExpression::take_left(bin_expr, tk);
-                    let right = BinaryExpression::take_right(bin_expr, tk);
-                    BinaryExpression::set_left(bin_expr, right, tk);
-                    BinaryExpression::set_right(bin_expr, left, tk);
+                    let left = bin_expr.take_left(tk);
+                    let right = bin_expr.take_right(tk);
+                    bin_expr.set_left(right, tk);
+                    bin_expr.set_right(left, tk);
                 }
             }
         }

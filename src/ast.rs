@@ -156,6 +156,20 @@ pub mod traversable {
     pub type Parent<'a> = traversable_parent::TraversableParent<'a>;
 }
 
+/// Module namespace for traversable AST traits which allow mutating traversable AST.
+/// Consumers of traversable AST will likely want to import this as a prelude:
+/// `use ast::traversable_traits::*;`
+#[allow(unused_imports)]
+#[rustfmt::skip] // To keep `use` statements in same order as types are defined in below
+pub mod traversable_traits {
+    use super::*;
+
+    pub use traversable_program::ProgramAccess;
+    pub use traversable_expression_statement::ExpressionStatementAccess;
+    pub use traversable_binary_expression::BinaryExpressionAccess;
+    pub use traversable_unary_expression::UnaryExpressionAccess;
+}
+
 #[derive(Debug)]
 #[repr(C)]
 pub struct Program<'a> {
@@ -187,45 +201,40 @@ mod traversable_program {
             // TODO: Extend lifetme to `'a`?
             &self.body[index]
         }
+    }
 
-        pub fn set_body_item(
-            program: SharedBox<'a, traversable::Program<'a>>,
-            index: usize,
-            stmt: traversable::Statement<'a>,
-            tk: &mut Token,
-        ) {
-            stmt.set_parent(traversable::Parent::Program(program), tk);
+    pub trait ProgramAccess<'a> {
+        fn set_body_item(self, index: usize, stmt: traversable::Statement<'a>, tk: &mut Token);
+        fn take_body_item(self, index: usize, tk: &mut Token) -> traversable::Statement<'a>;
+        fn push_body_item(self, stmt: traversable::Statement<'a>, tk: &mut Token);
+    }
+
+    impl<'a> ProgramAccess<'a> for SharedBox<'a, traversable::Program<'a>> {
+        fn set_body_item(self, index: usize, stmt: traversable::Statement<'a>, tk: &mut Token) {
+            stmt.set_parent(traversable::Parent::Program(self), tk);
 
             // TODO: We wouldn't need this unsafe if `oxc_allocator::Vec` implemented `IndexMut`
             // (which it could)
-            assert!(index < program.borrow(tk).body.len());
+            assert!(index < self.borrow(tk).body.len());
             // SAFETY: We checked `index` is in bounds.
-            let item = unsafe { &mut *program.borrow_mut(tk).body.as_mut_ptr().add(index) };
+            let item = unsafe { &mut *self.borrow_mut(tk).body.as_mut_ptr().add(index) };
             item.replace(stmt, tk);
         }
 
-        pub fn take_body_item(
-            program: SharedBox<'a, traversable::Program<'a>>,
-            index: usize,
-            tk: &mut Token,
-        ) -> traversable::Statement<'a> {
+        fn take_body_item(self, index: usize, tk: &mut Token) -> traversable::Statement<'a> {
             // TODO: We wouldn't need this unsafe if `oxc_allocator::Vec` implemented `IndexMut`
             // (which it could)
-            assert!(index < program.borrow(tk).body.len());
+            assert!(index < self.borrow(tk).body.len());
             // SAFETY: We checked `index` is in bounds.
-            let item = unsafe { &mut *program.borrow_mut(tk).body.as_mut_ptr().add(index) };
+            let item = unsafe { &mut *self.borrow_mut(tk).body.as_mut_ptr().add(index) };
             let stmt = item.replace(traversable::Statement::Dummy, tk);
             stmt.remove_parent(tk);
             stmt
         }
 
-        pub fn push_body_item(
-            program: SharedBox<'a, traversable::Program<'a>>,
-            stmt: traversable::Statement<'a>,
-            tk: &mut Token,
-        ) {
-            stmt.set_parent(traversable::Parent::Program(program), tk);
-            program.borrow_mut(tk).body.push(GCell::new(stmt));
+        fn push_body_item(self, stmt: traversable::Statement<'a>, tk: &mut Token) {
+            stmt.set_parent(traversable::Parent::Program(self), tk);
+            self.borrow_mut(tk).body.push(GCell::new(stmt));
         }
     }
 }
@@ -313,33 +322,33 @@ mod traversable_expression_statement {
             &self.expression
         }
 
-        pub fn set_expression(
-            expr_stmt: SharedBox<'a, traversable::ExpressionStatement<'a>>,
-            expr: traversable::Expression<'a>,
-            tk: &mut Token,
-        ) {
-            expr.set_parent(traversable::Parent::ExpressionStatement(expr_stmt), tk);
-            expr_stmt.borrow_mut(tk).expression = expr;
-        }
-
-        pub fn take_expression(
-            expr_stmt: SharedBox<'a, traversable::ExpressionStatement<'a>>,
-            tk: &mut Token,
-        ) -> traversable::Expression<'a> {
-            let expr = mem::replace(
-                &mut expr_stmt.borrow_mut(tk).expression,
-                traversable::Expression::Dummy,
-            );
-            expr.remove_parent(tk);
-            expr
-        }
-
         pub fn parent(&self) -> traversable::Parent<'a> {
             self.parent
         }
 
         pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
             self.parent = parent;
+        }
+    }
+
+    pub trait ExpressionStatementAccess<'a> {
+        fn set_expression(self, expr: traversable::Expression<'a>, tk: &mut Token);
+        fn take_expression(self, tk: &mut Token) -> traversable::Expression<'a>;
+    }
+
+    impl<'a> ExpressionStatementAccess<'a> for SharedBox<'a, traversable::ExpressionStatement<'a>> {
+        fn set_expression(self, expr: traversable::Expression<'a>, tk: &mut Token) {
+            expr.set_parent(traversable::Parent::ExpressionStatement(self), tk);
+            self.borrow_mut(tk).expression = expr;
+        }
+
+        fn take_expression(self, tk: &mut Token) -> traversable::Expression<'a> {
+            let expr = mem::replace(
+                &mut self.borrow_mut(tk).expression,
+                traversable::Expression::Dummy,
+            );
+            expr.remove_parent(tk);
+            expr
         }
     }
 }
@@ -507,54 +516,49 @@ mod traversable_binary_expression {
             &self.right
         }
 
-        pub fn set_left(
-            bin_expr: SharedBox<'a, traversable::BinaryExpression<'a>>,
-            expr: traversable::Expression<'a>,
-            tk: &mut Token,
-        ) {
-            expr.set_parent(traversable::Parent::BinaryExpressionLeft(bin_expr), tk);
-            bin_expr.borrow_mut(tk).left = expr;
-        }
-
-        pub fn set_right(
-            bin_expr: SharedBox<'a, traversable::BinaryExpression<'a>>,
-            expr: traversable::Expression<'a>,
-            tk: &mut Token,
-        ) {
-            expr.set_parent(traversable::Parent::BinaryExpressionRight(bin_expr), tk);
-            bin_expr.borrow_mut(tk).right = expr;
-        }
-
-        pub fn take_left(
-            bin_expr: SharedBox<'a, traversable::BinaryExpression<'a>>,
-            tk: &mut Token,
-        ) -> traversable::Expression<'a> {
-            let expr = mem::replace(
-                &mut bin_expr.borrow_mut(tk).left,
-                traversable::Expression::Dummy,
-            );
-            expr.remove_parent(tk);
-            expr
-        }
-
-        pub fn take_right(
-            bin_expr: SharedBox<'a, traversable::BinaryExpression<'a>>,
-            tk: &mut Token,
-        ) -> traversable::Expression<'a> {
-            let expr = mem::replace(
-                &mut bin_expr.borrow_mut(tk).right,
-                traversable::Expression::Dummy,
-            );
-            expr.remove_parent(tk);
-            expr
-        }
-
         pub fn parent(self) -> traversable::Parent<'a> {
             self.parent
         }
 
         pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
             self.parent = parent;
+        }
+    }
+
+    pub trait BinaryExpressionAccess<'a> {
+        fn set_left(self, expr: traversable::Expression<'a>, tk: &mut Token);
+        fn set_right(self, expr: traversable::Expression<'a>, tk: &mut Token);
+        fn take_left(self, tk: &mut Token) -> traversable::Expression<'a>;
+        fn take_right(self, tk: &mut Token) -> traversable::Expression<'a>;
+    }
+
+    impl<'a> BinaryExpressionAccess<'a> for SharedBox<'a, traversable::BinaryExpression<'a>> {
+        fn set_left(self, expr: traversable::Expression<'a>, tk: &mut Token) {
+            expr.set_parent(traversable::Parent::BinaryExpressionLeft(self), tk);
+            self.borrow_mut(tk).left = expr;
+        }
+
+        fn set_right(self, expr: traversable::Expression<'a>, tk: &mut Token) {
+            expr.set_parent(traversable::Parent::BinaryExpressionRight(self), tk);
+            self.borrow_mut(tk).right = expr;
+        }
+
+        fn take_left(self, tk: &mut Token) -> traversable::Expression<'a> {
+            let expr = mem::replace(
+                &mut self.borrow_mut(tk).left,
+                traversable::Expression::Dummy,
+            );
+            expr.remove_parent(tk);
+            expr
+        }
+
+        fn take_right(self, tk: &mut Token) -> traversable::Expression<'a> {
+            let expr = mem::replace(
+                &mut self.borrow_mut(tk).right,
+                traversable::Expression::Dummy,
+            );
+            expr.remove_parent(tk);
+            expr
         }
     }
 }
@@ -591,33 +595,33 @@ mod traversable_unary_expression {
             &self.argument
         }
 
-        pub fn set_argument(
-            unary_expr: SharedBox<'a, traversable::UnaryExpression<'a>>,
-            expr: traversable::Expression<'a>,
-            tk: &mut Token,
-        ) {
-            expr.set_parent(traversable::Parent::UnaryExpression(unary_expr), tk);
-            unary_expr.borrow_mut(tk).argument = expr;
-        }
-
-        pub fn take_argument(
-            unary_expr: SharedBox<'a, traversable::UnaryExpression<'a>>,
-            tk: &mut Token,
-        ) -> traversable::Expression<'a> {
-            let expr = mem::replace(
-                &mut unary_expr.borrow_mut(tk).argument,
-                traversable::Expression::Dummy,
-            );
-            expr.remove_parent(tk);
-            expr
-        }
-
         pub fn parent(&self) -> traversable::Parent<'a> {
             self.parent
         }
 
         pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
             self.parent = parent;
+        }
+    }
+
+    pub trait UnaryExpressionAccess<'a> {
+        fn set_argument(self, expr: traversable::Expression<'a>, tk: &mut Token);
+        fn take_argument(self, tk: &mut Token) -> traversable::Expression<'a>;
+    }
+
+    impl<'a> UnaryExpressionAccess<'a> for SharedBox<'a, traversable::UnaryExpression<'a>> {
+        fn set_argument(self, expr: traversable::Expression<'a>, tk: &mut Token) {
+            expr.set_parent(traversable::Parent::UnaryExpression(self), tk);
+            self.borrow_mut(tk).argument = expr;
+        }
+
+        fn take_argument(self, tk: &mut Token) -> traversable::Expression<'a> {
+            let expr = mem::replace(
+                &mut self.borrow_mut(tk).argument,
+                traversable::Expression::Dummy,
+            );
+            expr.remove_parent(tk);
+            expr
         }
     }
 }
