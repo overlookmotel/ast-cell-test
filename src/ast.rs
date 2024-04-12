@@ -279,6 +279,8 @@ mod traversable_statement {
 
     impl<'a> traversable::Statement<'a> {
         pub(super) fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
+            // This method is a safe fn because it checks node is not already attached to AST
+            // before attaching it
             use TraversableStatement::*;
             match self {
                 ExpressionStatement(expr_stmt) => {
@@ -388,6 +390,8 @@ mod traversable_expression {
 
     impl<'a> traversable::Expression<'a> {
         pub(super) fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
+            // This method is a safe fn because it checks node is not already attached to AST
+            // before attaching it
             use TraversableExpression::*;
             match self {
                 StringLiteral(expr) => {
