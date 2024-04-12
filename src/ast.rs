@@ -129,31 +129,6 @@ use oxc_allocator::{Box, Vec};
 
 use crate::cell::{GCell, SharedBox, SharedVec, Token};
 
-/// Macro to assert equivalence in size and alignment between standard and traversable types
-macro_rules! link_types {
-    ($standard:ident, $traversable:ident) => {
-        const _: () = {
-            use std::mem::{align_of, size_of};
-            assert!(size_of::<$standard>() == size_of::<$traversable>());
-            assert!(align_of::<$standard>() == align_of::<$traversable>());
-            assert!(size_of::<Box<$standard>>() == size_of::<&crate::cell::GCell<$traversable>>());
-            assert!(
-                align_of::<Box<$standard>>() == align_of::<&crate::cell::GCell<$traversable>>()
-            );
-        };
-
-        impl<'a> AsTraversable for $standard<'a> {
-            type Traversable = $traversable<'a>;
-        }
-    };
-}
-
-/// Trait to link "standard" AST types to their "traversable" counterparts.
-/// e.g. `Expression::Traversable` = `TraverableExpression`
-pub trait AsTraversable {
-    type Traversable;
-}
-
 /// Module namespace for traversable AST node types
 pub mod traversable {
     use super::*;
@@ -187,6 +162,31 @@ pub mod traversable_traits {
     pub use traversable_unary_expression::SharedUnaryExpression;
 
     pub use super::Copyable;
+}
+
+/// Trait to link "standard" AST types to their "traversable" counterparts.
+/// e.g. `Expression::Traversable` = `TraversableExpression`
+pub trait AsTraversable {
+    type Traversable;
+}
+
+/// Macro to assert equivalence in size and alignment between standard and traversable types
+macro_rules! link_types {
+    ($standard:ident, $traversable:ident) => {
+        const _: () = {
+            use std::mem::{align_of, size_of};
+            assert!(size_of::<$standard>() == size_of::<$traversable>());
+            assert!(align_of::<$standard>() == align_of::<$traversable>());
+            assert!(size_of::<Box<$standard>>() == size_of::<&crate::cell::GCell<$traversable>>());
+            assert!(
+                align_of::<Box<$standard>>() == align_of::<&crate::cell::GCell<$traversable>>()
+            );
+        };
+
+        impl<'a> AsTraversable for $standard<'a> {
+            type Traversable = $traversable<'a>;
+        }
+    };
 }
 
 #[derive(Debug)]
