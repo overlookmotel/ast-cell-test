@@ -57,13 +57,13 @@ impl<'a> Traverse<'a> for TransformTypeof {
     }
 }
 
-// Run these tests under Miri
+// Run these tests under Miri to ensure no UB in transmute between standard and traversable ASTs
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn no_ub_transforming() {
+    fn transform_traversable_ast() {
         let alloc = Allocator::default();
         let program = parser::parse(&alloc);
         semantic(program);
@@ -71,7 +71,7 @@ mod tests {
     }
 
     #[test]
-    fn no_ub_mutating_standard_ast_after_transform() {
+    fn mutate_standard_ast_after_transform() {
         use ast::{Expression, IdentifierReference, Parent, Statement, StringLiteral};
         use oxc_allocator::Box;
         use std::mem;
