@@ -45,10 +45,17 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         id: SharedBox<'a, IdentifierReference<'a>>,
         tk: &mut Token,
     ) {
+        let id_mut = id.borrow_mut(tk);
+        // SAFETY: We are here establishing the invariant of correct parent tracking
+        unsafe { id_mut.set_parent(self.current_parent) };
     }
 
     #[allow(unused_variables)]
-    fn visit_string_literal(&mut self, str_lit: SharedBox<'a, StringLiteral<'a>>, tk: &mut Token) {}
+    fn visit_string_literal(&mut self, str_lit: SharedBox<'a, StringLiteral<'a>>, tk: &mut Token) {
+        let str_lit_mut = str_lit.borrow_mut(tk);
+        // SAFETY: We are here establishing the invariant of correct parent tracking
+        unsafe { str_lit_mut.set_parent(self.current_parent) };
+    }
 
     fn visit_binary_expression(
         &mut self,
