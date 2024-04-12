@@ -4,6 +4,7 @@ use crate::{
             BinaryExpression, ExpressionStatement, IdentifierReference, Parent,
             Program as TraversableProgram, StringLiteral, UnaryExpression,
         },
+        traversable_traits::*,
         Program,
     },
     cell::{SharedBox, Token},
@@ -66,9 +67,9 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         // SAFETY: We are here establishing the invariant of correct parent tracking
         unsafe { bin_expr_mut.set_parent(self.current_parent) };
         self.current_parent = Parent::BinaryExpressionLeft(bin_expr);
-        self.visit_expression(bin_expr.borrow(tk).left(), tk);
+        self.visit_expression(bin_expr.left(tk), tk);
         self.current_parent = Parent::BinaryExpressionRight(bin_expr);
-        self.visit_expression(bin_expr.borrow(tk).right(), tk);
+        self.visit_expression(bin_expr.right(tk), tk);
     }
 
     fn visit_unary_expression(

@@ -43,12 +43,12 @@ impl<'a> Traverse<'a> for TransformTypeof {
     ) {
         self.walk_unary_expression(unary_expr, tk);
 
-        if unary_expr.borrow(tk).operator == UnaryOperator::Typeof {
-            if let Parent::BinaryExpressionLeft(bin_expr) = unary_expr.borrow(tk).parent() {
+        if unary_expr.operator(tk) == UnaryOperator::Typeof {
+            if let Parent::BinaryExpressionLeft(bin_expr) = unary_expr.parent(tk) {
                 if matches!(
-                    bin_expr.borrow(tk).operator,
+                    bin_expr.operator(tk),
                     BinaryOperator::Equality | BinaryOperator::StrictEquality
-                ) && matches!(bin_expr.borrow(tk).right(), Expression::StringLiteral(_))
+                ) && matches!(bin_expr.right(tk), Expression::StringLiteral(_))
                 {
                     // Swap left and right of binary expression
                     let left = bin_expr.take_left(tk);

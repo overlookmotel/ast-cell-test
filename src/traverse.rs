@@ -54,8 +54,8 @@ pub trait Traverse<'a> {
         // Need to read `len()` on each turn of the loop, as `visit_statement` (or a child of it)
         // could add more nodes to the `Vec`
         let mut index = 0;
-        while index < program.borrow(tk).body_len() {
-            let stmt = program.borrow(tk).body_item(index).borrow(tk).copy();
+        while index < program.body_len(tk) {
+            let stmt = program.body_item(index, tk).borrow(tk).copy();
             self.visit_statement(stmt, tk);
             index += 1;
         }
@@ -87,7 +87,7 @@ pub trait Traverse<'a> {
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
         tk: &mut Token,
     ) {
-        self.visit_expression(expr_stmt.borrow(tk).expression(), tk);
+        self.visit_expression(expr_stmt.expression(tk), tk);
     }
 
     fn visit_expression(&mut self, expr: Expression<'a>, tk: &mut Token) {
@@ -136,8 +136,8 @@ pub trait Traverse<'a> {
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
         tk: &mut Token,
     ) {
-        self.visit_expression(bin_expr.borrow(tk).left(), tk);
-        self.visit_expression(bin_expr.borrow(tk).right(), tk);
+        self.visit_expression(bin_expr.left(tk), tk);
+        self.visit_expression(bin_expr.right(tk), tk);
     }
 
     fn visit_unary_expression(
@@ -153,6 +153,6 @@ pub trait Traverse<'a> {
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
         tk: &mut Token,
     ) {
-        self.visit_expression(unary_expr.borrow(tk).argument(), tk);
+        self.visit_expression(unary_expr.argument(tk), tk);
     }
 }
