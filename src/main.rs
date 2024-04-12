@@ -18,8 +18,6 @@ use semantic::semantic;
 use traverse::{transform, Traverse};
 use visit::Visit;
 
-// TODO: Check that mutating the "normal" AST after it's been created does not get flagged by Miri.
-
 fn main() {
     let alloc = Allocator::default();
     let program = parser::parse(&alloc);
@@ -57,4 +55,40 @@ impl<'a> Traverse<'a> for TransformTypeof {
             }
         }
     }
+}
+
+// Run these tests under Miri
+#[test]
+fn test_no_ub_transforming() {
+    let alloc = Allocator::default();
+    let program = parser::parse(&alloc);
+    semantic(program);
+    transform(&mut TransformTypeof, program);
+}
+
+#[test]
+fn test_no_ub_mutating_standard_ast_after_transform() {
+    use ast::{Expression, Statement};
+    use std::mem;
+
+    let alloc = Allocator::default();
+    let program = parser::parse(&alloc);
+    semantic(program);
+    transform(&mut TransformTypeof, program);
+
+    let stmt = program.body.first_mut().unwrap();
+    let expr_stmt = if let Statement::ExpressionStatement(expr_stmt) = stmt {
+        expr_stmt
+    } else {
+        unreachable!();
+    };
+
+    let bin_expr = if let Expression::BinaryExpression(bin_expr) = &mut expr_stmt.expression {
+        bin_expr
+    } else {
+        unreachable!();
+    };
+    let left = mem::replace(&mut bin_expr.left, Expression::Dummy);
+    let right = mem::replace(&mut bin_expr.right, left);
+    bin_expr.left = right;
 }
