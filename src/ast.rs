@@ -47,7 +47,7 @@
 //! AST node, it only creates another *reference* to the *same* node.
 //!
 //! `enum` AST node types (e.g. `Expression`) are `Copy` and `Clone`. As they only contain
-//! a `SharedBox<T>` and the enum discriminant,
+//! a `SharedBox<T>` and the enum discriminant.
 //!
 //! # Preventing illegal ASTs
 //!
@@ -71,25 +71,32 @@
 //!
 //! To maintain these invariants, it is essential that access to `.parent` and other fields containing
 //! nodes are not public outside this file. Alteration of these fields must only be allowed via
-//! `take_*` and `set_*` methods which do the necessary checks.
+//! `take_*` and `set_*` methods, which do the necessary checks.
 //!
-//! It would be better to enforce this at compile time by wrapping nodes returned by `take_*` in an
-//! `Orphan<T>` wrapper, and making `set_*` methods only accept orphans.
+//! This implies that struct AST node types must *not* be `Clone`. If they were cloned, the `parent`
+//! of the clone would be incorrect. Enum AST node types can be `Copy` and `Clone` as they don't have
+//! a `parent` field. Each of their variants contains a `SharedBox<T>` ref to the specific node type,
+//! and *those* contain the `parent`.
+//!
+//! It would be better to enforce this invariant at compile time by wrapping nodes returned by `take_*`
+//! in an `Orphan<T>` wrapper, and making `set_*` methods only accept `Orphan<T>`. TODO
 //!
 //! # Cycles of nodes
 //!
 //! The above does not prevent circular references between nodes, or even a node whose parent is itself.
 //! However, this is fine from a safety perspective. Such a circular set of nodes by definition cannot
-//! be connected to the tree which extends down from `Program`, so it's floating in space unconnected
+//! be connected to the tree which extends down from `Program`, so it's "floating in space" unconnected
 //! to the AST.
 //!
 //! Such a circular structure is illegal in the standard AST, and it would likely be UB to attempt to
 //! traverse it in "standard land". But as all that's returned to "standard land" is the `Program`,
-//! the illegal loop cannot be reached for there, and this unsound situation cannot arise.
+//! the illegal loop cannot be reached from there, and this unsound situation cannot arise.
 //!
 //! In the traversable AST, if you're in the middle of traversing a node and it's turned into part of
 //! a cycle, this will lead to an infinite loop - a traversal which keeps going around in circles.
-//! Not good, but not UB.
+//! Not good, but not UB. It would not be possible to prevent this statically, and even checking for
+//! circularity at runtime would be fairly expensive, so we leave it as a situation that consumer of
+//! the AST must ensure they avoid themselves when modifying the AST.
 //!
 //! # SAFETY
 //!
@@ -99,7 +106,8 @@
 //! * All enums must be `#[repr(C, u8)]` with explicit discriminants to ensure discriminants
 //!   match between the "standard" and "traversable" types.
 //! * The invariant that a node cannot be attached to the tree in 2 places must be upheld,
-//!   and no access to AST in a way which would allow circumventing it must be allowed.
+//!   and all access to AST nodes' fields which contain other nodes must be intermediated
+//!   via a method which upholds this invariant.
 
 // TODO: Create the "Traversable" types with a macro to ensure they cannot be out of sync,
 // and apply `#[repr(C)]` (for structs) / `#[repr(C, u8)]` (for enums) programmatically,
@@ -198,7 +206,7 @@ mod traversable_program {
         }
 
         // NB: We could name these methods `body_stmt` / `set_body_stmt` etc, but this would make
-        // a macro which we'll use to generate these impls more complicated.
+        // macro which we'll use to generate these impls more complicated.
         // TODO: We could probably abstract much of this into methods on a `SharedVec` type.
         // TODO: Implement more `Vec` methods.
         pub fn body_item(&self, index: usize) -> SharedBox<traversable::Statement<'a>> {

@@ -19,8 +19,6 @@ use traverse::{transform, Traverse};
 use visit::Visit;
 
 // TODO: Check that mutating the "normal" AST after it's been created does not get flagged by Miri.
-// TODO: Ensure the scheme to prevent duplicate nodes in transferrable AST works.
-//       Do node types being `Copy` and `Clone` make it becomes possible?
 
 fn main() {
     let alloc = Allocator::default();
