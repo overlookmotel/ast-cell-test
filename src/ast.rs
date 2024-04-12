@@ -293,7 +293,7 @@ mod traversable_program {
         ) {
             stmt.set_parent(traversable::Parent::Program(self), tk);
 
-            // `unsafe` here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
+            // Unsafe code here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
             // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
             // TODO: Do that instead and remove this `unsafe`.
             assert!(index < self.borrow(tk).body.len());
@@ -307,7 +307,7 @@ mod traversable_program {
             index: usize,
             tk: &mut Token,
         ) -> Orphan<traversable::Statement<'a>> {
-            // `unsafe` here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
+            // Unsafe code here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
             // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
             // TODO: Do that instead and remove this `unsafe`.
             assert!(index < self.borrow(tk).body.len());
