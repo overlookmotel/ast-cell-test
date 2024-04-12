@@ -139,7 +139,7 @@ pub trait AsTraversable {
     type Traversable;
 }
 
-/// Module namespace for transferrable AST node types
+/// Module namespace for traversable AST node types
 pub mod traversable {
     use super::*;
 
