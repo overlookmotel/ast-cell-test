@@ -58,69 +58,74 @@ impl<'a> Traverse<'a> for TransformTypeof {
 }
 
 // Run these tests under Miri
-#[test]
-fn test_no_ub_transforming() {
-    let alloc = Allocator::default();
-    let program = parser::parse(&alloc);
-    semantic(program);
-    transform(&mut TransformTypeof, program);
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[test]
-fn test_no_ub_mutating_standard_ast_after_transform() {
-    use ast::{Expression, IdentifierReference, Parent, Statement, StringLiteral};
-    use oxc_allocator::Box;
-    use std::mem;
+    #[test]
+    fn no_ub_transforming() {
+        let alloc = Allocator::default();
+        let program = parser::parse(&alloc);
+        semantic(program);
+        transform(&mut TransformTypeof, program);
+    }
 
-    let alloc = Allocator::default();
-    let program = parser::parse(&alloc);
-    semantic(program);
-    transform(&mut TransformTypeof, program);
+    #[test]
+    fn no_ub_mutating_standard_ast_after_transform() {
+        use ast::{Expression, IdentifierReference, Parent, Statement, StringLiteral};
+        use oxc_allocator::Box;
+        use std::mem;
 
-    let stmt = program.body.first_mut().unwrap();
-    let expr_stmt = if let Statement::ExpressionStatement(expr_stmt) = stmt {
-        expr_stmt
-    } else {
-        unreachable!();
-    };
+        let alloc = Allocator::default();
+        let program = parser::parse(&alloc);
+        semantic(program);
+        transform(&mut TransformTypeof, program);
 
-    let bin_expr = if let Expression::BinaryExpression(bin_expr) = &mut expr_stmt.expression {
-        bin_expr
-    } else {
-        unreachable!();
-    };
-    let left = mem::replace(&mut bin_expr.left, Expression::Dummy);
-    let right = mem::replace(&mut bin_expr.right, left);
-    bin_expr.left = right;
+        let stmt = program.body.first_mut().unwrap();
+        let expr_stmt = if let Statement::ExpressionStatement(expr_stmt) = stmt {
+            expr_stmt
+        } else {
+            unreachable!();
+        };
 
-    let unary_expr = if let Expression::UnaryExpression(unary_expr) = &mut bin_expr.left {
-        &mut **unary_expr
-    } else {
-        unreachable!();
-    };
-    unary_expr.operator = UnaryOperator::UnaryNegation;
+        let bin_expr = if let Expression::BinaryExpression(bin_expr) = &mut expr_stmt.expression {
+            bin_expr
+        } else {
+            unreachable!();
+        };
+        let left = mem::replace(&mut bin_expr.left, Expression::Dummy);
+        let right = mem::replace(&mut bin_expr.right, left);
+        bin_expr.left = right;
 
-    let id = if let Expression::Identifier(unary_expr) = &mut unary_expr.argument {
-        &mut **unary_expr
-    } else {
-        unreachable!();
-    };
-    id.name = "bar";
+        let unary_expr = if let Expression::UnaryExpression(unary_expr) = &mut bin_expr.left {
+            &mut **unary_expr
+        } else {
+            unreachable!();
+        };
+        unary_expr.operator = UnaryOperator::UnaryNegation;
 
-    unary_expr.argument = Expression::StringLiteral(Box(alloc.alloc(StringLiteral {
-        value: "foo",
-        parent: Parent::None,
-    })));
+        let id = if let Expression::Identifier(unary_expr) = &mut unary_expr.argument {
+            &mut **unary_expr
+        } else {
+            unreachable!();
+        };
+        id.name = "bar";
 
-    let str_lit = if let Expression::StringLiteral(str_lit) = &mut bin_expr.right {
-        &mut **str_lit
-    } else {
-        unreachable!();
-    };
-    str_lit.value = "string";
+        unary_expr.argument = Expression::StringLiteral(Box(alloc.alloc(StringLiteral {
+            value: "foo",
+            parent: Parent::None,
+        })));
 
-    bin_expr.right = Expression::Identifier(Box(alloc.alloc(IdentifierReference {
-        name: "qux",
-        parent: Parent::None,
-    })));
+        let str_lit = if let Expression::StringLiteral(str_lit) = &mut bin_expr.right {
+            &mut **str_lit
+        } else {
+            unreachable!();
+        };
+        str_lit.value = "string";
+
+        bin_expr.right = Expression::Identifier(Box(alloc.alloc(IdentifierReference {
+            name: "qux",
+            parent: Parent::None,
+        })));
+    }
 }
