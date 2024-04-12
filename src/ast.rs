@@ -287,11 +287,11 @@ pub enum Statement<'a> {
 // Failure to do so will not lead to memory unsafety or UB, but it's not a valid AST and other tools
 // should probably panic if they find one.
 //
-// I cannot see any way to statically prevent this. `take` methods could return a marker type which
+// I cannot see any way to statically prevent this. `take_*` methods could return a marker type which
 // panics in it's `Drop` impl. When inserting a node back into same place in the AST again, this marker
 // type would be consumed without dropping it. If nothing is reinserted, the marker type will get dropped
 // at end of the function where it was created, and will panic.
-// But that is a runtime panic not const time, so while it's probably better to trigger the panic early,
+// But that is a runtime panic, not const time, so while it's probably better to trigger the panic early,
 // during the transform, as you'll be able to see where the mistake is, it's still not ideal.
 // Rust should not include the pannicking `drop` function in output if it can prove it won't be called.
 // But in any function which can panic, it will have to include it as `drop` gets called during unwinding.
@@ -834,7 +834,7 @@ mod traversable_parent {
     }
 }
 
-/// Convenience trait to copy `Copy` types without a temp var where borrow-checker
+/// Convenience trait to copy `Copy` types without a temp var, where borrow-checker
 /// complains otherwise. Equivalent to `.clone()`, but clippy doesn't flag it.
 /// It's also useful to use `.copy()` instead of `.clone()` to indicate it's not
 /// an expensive operation.
