@@ -165,12 +165,6 @@ pub mod traversable_traits {
     pub use super::Copyable;
 }
 
-/// Trait to link "standard" AST types to their "traversable" counterparts.
-/// e.g. `Expression::Traversable` = `TraversableExpression`
-pub trait AsTraversable {
-    type Traversable;
-}
-
 /// Macro to assert equivalence in size and alignment between standard and traversable types
 macro_rules! link_types {
     ($standard:ident, $traversable:ident) => {
@@ -183,10 +177,6 @@ macro_rules! link_types {
                 align_of::<Box<$standard>>() == align_of::<&crate::cell::GCell<$traversable>>()
             );
         };
-
-        impl<'a> AsTraversable for $standard<'a> {
-            type Traversable = $traversable<'a>;
-        }
     };
 }
 
