@@ -326,6 +326,8 @@ mod traversable_expression_statement {
             self.parent
         }
 
+        // SAFETY: Caller must ensure parent is set correctly to track whether node is
+        // currently attached to AST or not. See doc comment at top of file.
         pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
             self.parent = parent;
         }
@@ -450,6 +452,8 @@ mod traversable_identifier_reference {
             self.parent
         }
 
+        // SAFETY: Caller must ensure parent is set correctly to track whether node is
+        // currently attached to AST or not. See doc comment at top of file.
         pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
             self.parent = parent;
         }
@@ -479,6 +483,8 @@ mod traversable_string_literal {
             self.parent
         }
 
+        // SAFETY: Caller must ensure parent is set correctly to track whether node is
+        // currently attached to AST or not. See doc comment at top of file.
         pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
             self.parent = parent;
         }
@@ -520,6 +526,8 @@ mod traversable_binary_expression {
             self.parent
         }
 
+        // SAFETY: Caller must ensure parent is set correctly to track whether node is
+        // currently attached to AST or not. See doc comment at top of file.
         pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
             self.parent = parent;
         }
@@ -599,6 +607,8 @@ mod traversable_unary_expression {
             self.parent
         }
 
+        // SAFETY: Caller must ensure parent is set correctly to track whether node is
+        // currently attached to AST or not. See doc comment at top of file.
         pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
             self.parent = parent;
         }
