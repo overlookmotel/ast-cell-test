@@ -59,25 +59,20 @@ We want to be able to transmute the traversable AST back to the standard AST, so
 this in the traversable AST too. If we didn't, it would result in UB when using the standard AST
 if it contains such illegal double-references.
 
-The method to prevent this is currently runtime checks.
-Every AST node has a `parent` field containing a `Parent<'a>` pointing to the parent.
-An AST node which is connected to the AST has `parent` set to one of the contentful variants.
-If a node is removed from the AST with a `take_*` method, the `parent` field is set to
-`Parent::None`. `set_*` methods will only accept a node with `.parent == Parent::None`, and will
-panic if passed an AST node which already has a full `parent`.
-This prevents a node from being attached to the AST in more than 1 place.
+The method to prevent this is the `Orphan<T>` wrapper type.
+All `take_*` methods, which remove nodes from the AST, return the node wrapped in an `Orphan<T>`.
+All `set_*` methods, and other methods which attach nodes to the AST, only accept an `Orphan<T>`.
+This prevents a node from being attached to the AST in more than 1 place, by insisting it must be
+removed from it's current position in AST first.
 
 To maintain these invariants, it is essential that access to `.parent` and other fields containing
 nodes are not public outside this file. Alteration of these fields must only be allowed via
-`take_*` and `set_*` methods, which do the necessary checks.
+methods (e.g. `take_*` and `set_*`), which enforce the no-duplicates rule.
 
 This implies that struct AST node types must *not* be `Clone`. If they were cloned, the `parent`
 of the clone would be incorrect. Enum AST node types can be `Copy` and `Clone` as they don't have
 a `parent` field. Each of their variants contains a `SharedBox<T>` ref to the specific node type,
 and *those* contain the `parent`.
-
-It would be better to enforce this invariant at compile time by wrapping nodes returned by `take_*`
-in an `Orphan<T>` wrapper, and making `set_*` methods only accept `Orphan<T>`. TODO
 
 ## Cycles of nodes
 
