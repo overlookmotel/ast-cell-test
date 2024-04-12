@@ -53,8 +53,8 @@ pub trait Traverse<'a> {
         // Need to read `len()` on each turn of the loop, as `visit_statement` (or a child of it)
         // could add more nodes to the `Vec`
         let mut index = 0;
-        while index < program.borrow(tk).body.len() {
-            let stmt = program.borrow(tk).body.as_slice()[index].borrow(tk).clone();
+        while index < program.borrow(tk).body_len() {
+            let stmt = program.borrow(tk).body_item(index).borrow(tk).clone();
             self.visit_statement(&stmt, tk);
             index += 1;
         }

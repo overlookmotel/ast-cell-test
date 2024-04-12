@@ -112,7 +112,7 @@ use std::mem;
 
 use oxc_allocator::{Box, Vec};
 
-use crate::cell::{SharedBox, SharedVec, Token};
+use crate::cell::{GCell, SharedBox, SharedVec, Token};
 
 /// Macro to assert equivalence in size and alignment between standard and traversable types
 macro_rules! link_types {
@@ -169,12 +169,65 @@ mod traversable_program {
 
     #[repr(C)]
     pub struct TraversableProgram<'a> {
-        pub body: SharedVec<'a, traversable::Statement<'a>>,
+        pub(super) body: SharedVec<'a, traversable::Statement<'a>>,
     }
 
     link_types!(Program, TraversableProgram);
 
-    // TODO: Implement methods to mutate statements
+    impl<'a> traversable::Program<'a> {
+        pub fn body_len(&self) -> usize {
+            self.body.len()
+        }
+
+        // NB: We could name these methods `body_stmt` / `set_body_stmt` etc, but this would make
+        // a macro which we'll use to generate these impls more complicated.
+        // TODO: We could probably abstract much of this into methods on a `SharedVec` type.
+        // TODO: Implement more `Vec` methods.
+        pub fn body_item(&self, index: usize) -> SharedBox<traversable::Statement<'a>> {
+            // TODO: Extend lifetme to `'a`?
+            &self.body[index]
+        }
+
+        pub fn set_body_item(
+            program: SharedBox<'a, traversable::Program<'a>>,
+            index: usize,
+            stmt: traversable::Statement<'a>,
+            tk: &mut Token,
+        ) {
+            stmt.set_parent(traversable::Parent::Program(program), tk);
+
+            // TODO: We wouldn't need this unsafe if `oxc_allocator::Vec` implemented `IndexMut`
+            // (which it could)
+            assert!(index < program.borrow(tk).body.len());
+            // SAFETY: We checked `index` is in bounds.
+            let item = unsafe { &mut *program.borrow_mut(tk).body.as_mut_ptr().add(index) };
+            item.replace(stmt, tk);
+        }
+
+        pub fn take_body_item(
+            program: SharedBox<'a, traversable::Program<'a>>,
+            index: usize,
+            tk: &mut Token,
+        ) -> traversable::Statement<'a> {
+            // TODO: We wouldn't need this unsafe if `oxc_allocator::Vec` implemented `IndexMut`
+            // (which it could)
+            assert!(index < program.borrow(tk).body.len());
+            // SAFETY: We checked `index` is in bounds.
+            let item = unsafe { &mut *program.borrow_mut(tk).body.as_mut_ptr().add(index) };
+            let stmt = item.replace(traversable::Statement::Dummy, tk);
+            stmt.remove_parent(tk);
+            stmt
+        }
+
+        pub fn push_body_item(
+            program: SharedBox<'a, traversable::Program<'a>>,
+            stmt: traversable::Statement<'a>,
+            tk: &mut Token,
+        ) {
+            stmt.set_parent(traversable::Parent::Program(program), tk);
+            program.borrow_mut(tk).body.push(GCell::new(stmt));
+        }
+    }
 }
 
 #[derive(Debug)]
