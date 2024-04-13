@@ -131,6 +131,8 @@
 // not a graph, and we've made it impossible for a node to be in the AST twice.
 // Therefore, we can mutably borrow all of the properties of a node simultaneously, and can be sure
 // they can't alias. e.g. can mutably borrow `left` and `right` of `BinaryExpression` simultaneously.
+// NB: *Cannot* mut borrow `parent` at same time, as cycles in AST are possible, so e.g. `left`
+// and `parent` could point to the same node.
 
 use std::mem;
 
