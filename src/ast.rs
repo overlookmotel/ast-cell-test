@@ -280,11 +280,7 @@ mod traversable_program {
             self.body.len()
         }
 
-        // NB: We could name these methods `body_stmt` / `replace_body_item` etc, but this would make
-        // macro which we'll use to generate these impls more complicated.
-        // TODO: We could probably abstract much of this into methods on a `SharedVec` type.
-        // TODO: Implement more `Vec` methods.
-        pub fn body_item(&self, index: usize) -> SharedBox<traversable::Statement<'a>> {
+        pub fn body_stmt(&self, index: usize) -> SharedBox<traversable::Statement<'a>> {
             // TODO: Extend lifetme to `'a`?
             &self.body[index]
         }
@@ -292,18 +288,20 @@ mod traversable_program {
 
     pub trait SharedProgram<'a> {
         fn body_len(self, tk: &Token) -> usize;
-        fn body_item(self, index: usize, tk: &Token) -> SharedBox<traversable::Statement<'a>>;
-        fn replace_body_item(
+        fn body_stmt(self, index: usize, tk: &Token) -> SharedBox<traversable::Statement<'a>>;
+        fn replace_body_stmt(
             self,
             index: usize,
             stmt: Orphan<traversable::Statement<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Statement<'a>>;
-        fn take_body_item(self, index: usize, tk: &mut Token)
+        fn take_body_stmt(self, index: usize, tk: &mut Token)
             -> Orphan<traversable::Statement<'a>>;
-        fn push_body_item(self, stmt: Orphan<traversable::Statement<'a>>, tk: &mut Token);
+        fn push_body_stmt(self, stmt: Orphan<traversable::Statement<'a>>, tk: &mut Token);
     }
 
+    // TODO: We could probably abstract much of this into methods on a `SharedVec` type.
+    // TODO: Implement more `Vec` methods.
     impl<'a> SharedProgram<'a> for SharedBox<'a, traversable::Program<'a>> {
         /// Convenience method for getting `body.len()` from a ref.
         fn body_len(self, tk: &Token) -> usize {
@@ -311,19 +309,19 @@ mod traversable_program {
         }
 
         /// Convenience method for getting a body statement from a ref.
-        fn body_item(self, index: usize, tk: &Token) -> SharedBox<traversable::Statement<'a>> {
+        fn body_stmt(self, index: usize, tk: &Token) -> SharedBox<traversable::Statement<'a>> {
             // TODO: Extend lifetme to `'a`?
             &self.borrow(tk).body[index]
         }
 
         /// Replace statement at `index` of `Program` body, and return previous value.
-        fn replace_body_item(
+        fn replace_body_stmt(
             self,
             index: usize,
             stmt: Orphan<traversable::Statement<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Statement<'a>> {
-            let old_stmt = *self.body_item(index, tk).borrow(tk);
+            let old_stmt = *self.body_stmt(index, tk).borrow(tk);
             old_stmt.remove_parent(tk);
 
             stmt.set_parent(traversable::Parent::ProgramBody(self), tk);
@@ -341,7 +339,7 @@ mod traversable_program {
         }
 
         /// Extract statement at `index` of `Program` body, and replace with a dummy statement.
-        fn take_body_item(
+        fn take_body_stmt(
             self,
             index: usize,
             tk: &mut Token,
@@ -358,7 +356,7 @@ mod traversable_program {
             unsafe { Orphan::new(stmt) }
         }
 
-        fn push_body_item(self, stmt: Orphan<traversable::Statement<'a>>, tk: &mut Token) {
+        fn push_body_stmt(self, stmt: Orphan<traversable::Statement<'a>>, tk: &mut Token) {
             stmt.set_parent(traversable::Parent::ProgramBody(self), tk);
             self.borrow_mut(tk).body.push(GCell::new(stmt.inner()));
         }

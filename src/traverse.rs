@@ -55,7 +55,7 @@ pub trait Traverse<'a> {
         // could add more nodes to the `Vec`
         let mut index = 0;
         while index < program.body_len(tk) {
-            let stmt = program.body_item(index, tk).borrow(tk).copy();
+            let stmt = program.body_stmt(index, tk).borrow(tk).copy();
             self.visit_statement(stmt, tk);
             index += 1;
         }
