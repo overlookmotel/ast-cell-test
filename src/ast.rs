@@ -80,6 +80,8 @@
 //! // This is not possible
 //! let unary_expr_mut = unary_expr_ref.borrow_mut(tk);
 //! *unary_expr_mut = get_owned_unary_expr_somehow();
+//! // This is also not possible
+//! unary_expr_ref.replace(get_owned_unary_expr_somehow(), tk);
 //! ```
 //!
 //! This implies that struct AST node types must **not** be `Clone`.
