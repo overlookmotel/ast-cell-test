@@ -108,6 +108,9 @@
 // and apply `#[repr(C)]` (for structs) / `#[repr(C, u8)]` (for enums) programmatically,
 // so can't get forgotten. Generate accessor methods (`take_*` etc) with a macro/codegen too.
 
+// TODO: Check cannot produce duplicate nodes in AST using `GCell::borrow_mut` and then assigning to
+// that borrowed node to insert into AST without checks.
+
 // TODO: Place `parent` field in all types in same position to remove branches when setting/getting
 // parent for an `Expression` or `Statement`.
 
@@ -117,6 +120,11 @@
 // type layouts at compile time and error if there's padding in middle of a struct.
 // This isn't mission-critical for safety, just a perf optimization, so the macro could be behind
 // a feature, disabled by default, and we just compile with it enabled from time to time.
+
+// TODO: We can actually relax GhostCell's rules a little, enabled by the fact that the AST is a tree
+// not a graph, and we've made it impossible for a node to be in the AST twice.
+// Therefore, we can mutably borrow all of the properties of a node simultaneously, and can be sure
+// they can't alias. e.g. can mutably borrow `left` and `right` of `BinaryExpression` simultaneously.
 
 // TODO: Create an AST builder which returns nodes wrapped in `Orphan<T>`, ready to be attached
 // to the AST.
@@ -435,6 +443,9 @@ mod traversable_expression_statement {
         }
 
         fn set_expression(self, expr: Orphan<traversable::Expression<'a>>, tk: &mut Token) {
+            // TODO: Set parent of node being over-ridden to `Parent::None`.
+            // Could also return the clobbered node (and maybe rename method to `replace`).
+            // Same for all other `set_*` methods.
             expr.set_parent(traversable::Parent::ExpressionStatement(self), tk);
             self.borrow_mut(tk).expression = expr.inner();
         }
