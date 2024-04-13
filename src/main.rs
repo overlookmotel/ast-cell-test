@@ -48,9 +48,8 @@ impl<'a> Traverse<'a> for TransformTypeof {
                 {
                     // Swap left and right of binary expression
                     let left = bin_expr.take_left(tk);
-                    let right = bin_expr.take_right(tk);
-                    bin_expr.set_left(right, tk);
-                    bin_expr.set_right(left, tk);
+                    let right = bin_expr.replace_right(left, tk);
+                    bin_expr.replace_left(right, tk);
                 }
             }
         }

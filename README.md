@@ -61,13 +61,13 @@ if it contains such illegal double-references.
 
 The method to prevent this is the `Orphan<T>` wrapper type.
 All `take_*` methods, which remove nodes from the AST, return the node wrapped in an `Orphan<T>`.
-All `set_*` methods, and other methods which attach nodes to the AST, only accept an `Orphan<T>`.
+All `replace_*` methods, and other methods which attach nodes to the AST, only accept an `Orphan<T>`.
 This prevents a node from being attached to the AST in more than 1 place, by insisting it must be
 removed from it's current position in AST first.
 
 To maintain these invariants, it is essential that access to `.parent` and other fields containing
 nodes are not public outside this file. Alteration of these fields must only be allowed via
-methods (e.g. `take_*` and `set_*`), which enforce the no-duplicates rule.
+methods (e.g. `take_*` and `replace_*`), which enforce the no-duplicates rule.
 
 This implies that struct AST node types must *not* be `Clone`. If they were cloned, the `parent`
 of the clone would be incorrect. Enum AST node types can be `Copy` and `Clone` as they don't have
