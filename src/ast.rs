@@ -126,9 +126,6 @@
 // Therefore, we can mutably borrow all of the properties of a node simultaneously, and can be sure
 // they can't alias. e.g. can mutably borrow `left` and `right` of `BinaryExpression` simultaneously.
 
-// TODO: Create an AST builder which returns nodes wrapped in `Orphan<T>`, ready to be attached
-// to the AST.
-
 use std::mem;
 
 use oxc_allocator::{Allocator, Box, Vec};
@@ -136,6 +133,7 @@ use oxc_allocator::{Allocator, Box, Vec};
 use crate::cell::{GCell, SharedBox, SharedVec, Token};
 
 /// Module namespace for traversable AST node types
+#[allow(unused_imports)]
 pub mod traversable {
     use super::*;
 
@@ -151,8 +149,8 @@ pub mod traversable {
     pub type UnaryExpression<'a> = traversable_unary_expression::TraversableUnaryExpression<'a>;
     pub type Parent<'a> = traversable_parent::TraversableParent<'a>;
 
-    #[allow(unused_imports)]
     pub use super::Orphan;
+    pub use super::TraversableAstBuilder as AstBuilder;
 }
 
 /// Module namespace for traversable AST traits which allow mutating traversable AST.
@@ -241,6 +239,17 @@ impl GCellAlloc for Allocator {
     #[inline]
     fn galloc<T>(&self, value: T) -> &mut GCell<T> {
         GCell::from_mut(self.alloc(value))
+    }
+}
+
+/// AST builder for creating AST nodes for traversable AST
+pub struct TraversableAstBuilder<'a> {
+    pub allocator: &'a Allocator,
+}
+
+impl<'a> TraversableAstBuilder<'a> {
+    pub fn new(allocator: &'a Allocator) -> Self {
+        Self { allocator }
     }
 }
 
@@ -489,6 +498,17 @@ mod traversable_expression_statement {
             unsafe { Orphan::new(expr) }
         }
     }
+
+    impl<'a> TraversableAstBuilder<'a> {
+        #[inline]
+        pub fn expression_statement(
+            &self,
+            expression: Orphan<traversable::Expression<'a>>,
+            tk: &mut Token,
+        ) -> Orphan<traversable::Statement<'a>> {
+            traversable::ExpressionStatement::new_stmt_in(expression, self.allocator, tk)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -597,6 +617,13 @@ mod traversable_identifier_reference {
             self.borrow(tk).parent
         }
     }
+
+    impl<'a> TraversableAstBuilder<'a> {
+        #[inline]
+        pub fn identifier_reference(&self, name: &'a str) -> Orphan<traversable::Expression<'a>> {
+            traversable::IdentifierReference::new_expr_in(name, self.allocator)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -649,6 +676,13 @@ mod traversable_string_literal {
         /// Convenience method for getting `parent` from a ref.
         fn parent(self, tk: &Token) -> traversable::Parent<'a> {
             self.borrow(tk).parent
+        }
+    }
+
+    impl<'a> TraversableAstBuilder<'a> {
+        #[inline]
+        pub fn string_literal(&self, value: &'a str) -> Orphan<traversable::Expression<'a>> {
+            traversable::StringLiteral::new_expr_in(value, self.allocator)
         }
     }
 }
@@ -778,6 +812,19 @@ mod traversable_binary_expression {
             unsafe { Orphan::new(expr) }
         }
     }
+
+    impl<'a> TraversableAstBuilder<'a> {
+        #[inline]
+        pub fn binary_expression(
+            &self,
+            left: Orphan<traversable::Expression<'a>>,
+            operator: BinaryOperator,
+            right: Orphan<traversable::Expression<'a>>,
+            tk: &mut Token,
+        ) -> Orphan<traversable::Expression<'a>> {
+            traversable::BinaryExpression::new_expr_in(left, operator, right, self.allocator, tk)
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -877,6 +924,18 @@ mod traversable_unary_expression {
             expr.remove_parent(tk);
             // SAFETY: We have removed `expr` from the AST
             unsafe { Orphan::new(expr) }
+        }
+    }
+
+    impl<'a> TraversableAstBuilder<'a> {
+        #[inline]
+        pub fn unary_expression(
+            &self,
+            operator: UnaryOperator,
+            argument: Orphan<traversable::Expression<'a>>,
+            tk: &mut Token,
+        ) -> Orphan<traversable::Expression<'a>> {
+            traversable::UnaryExpression::new_expr_in(operator, argument, self.allocator, tk)
         }
     }
 }
