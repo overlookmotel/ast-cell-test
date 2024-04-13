@@ -280,15 +280,14 @@ mod traversable_program {
             self.body.len()
         }
 
-        pub fn body_stmt(&self, index: usize) -> SharedBox<traversable::Statement<'a>> {
-            // TODO: Extend lifetme to `'a`?
-            &self.body[index]
+        pub fn body_stmt(&self, index: usize, tk: &Token) -> traversable::Statement<'a> {
+            *self.body[index].borrow(tk)
         }
     }
 
     pub trait SharedProgram<'a> {
         fn body_len(self, tk: &Token) -> usize;
-        fn body_stmt(self, index: usize, tk: &Token) -> SharedBox<traversable::Statement<'a>>;
+        fn body_stmt(self, index: usize, tk: &Token) -> traversable::Statement<'a>;
         fn replace_body_stmt(
             self,
             index: usize,
@@ -309,9 +308,9 @@ mod traversable_program {
         }
 
         /// Convenience method for getting a body statement from a ref.
-        fn body_stmt(self, index: usize, tk: &Token) -> SharedBox<traversable::Statement<'a>> {
-            // TODO: Extend lifetme to `'a`?
-            &self.borrow(tk).body[index]
+        #[inline]
+        fn body_stmt(self, index: usize, tk: &Token) -> traversable::Statement<'a> {
+            *self.borrow(tk).body[index].borrow(tk)
         }
 
         /// Replace statement at `index` of `Program` body, and return previous value.
@@ -321,7 +320,7 @@ mod traversable_program {
             stmt: Orphan<traversable::Statement<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Statement<'a>> {
-            let old_stmt = *self.body_stmt(index, tk).borrow(tk);
+            let old_stmt = self.body_stmt(index, tk);
             old_stmt.remove_parent(tk);
 
             stmt.set_parent(traversable::Parent::ProgramBody(self), tk);
