@@ -131,7 +131,7 @@
 
 use std::mem;
 
-use oxc_allocator::{Box, Vec};
+use oxc_allocator::{Allocator, Box, Vec};
 
 use crate::cell::{GCell, SharedBox, SharedVec, Token};
 
@@ -229,6 +229,20 @@ mod orphan {
     }
 }
 pub use orphan::Orphan;
+
+/// Trait to sugar `GCell::from_mut(allocator.alloc(t))` to `allocator.galloc(t)`.
+trait GCellAlloc {
+    #[allow(clippy::mut_from_ref)]
+    fn galloc<T>(&self, value: T) -> &mut GCell<T>;
+}
+
+impl GCellAlloc for Allocator {
+    /// Allocate `T` into arena and return a `&mut GCell` to it
+    #[inline]
+    fn galloc<T>(&self, value: T) -> &mut GCell<T> {
+        GCell::from_mut(self.alloc(value))
+    }
+}
 
 // --------------------------------------------------------------------------------
 // AST node types
@@ -409,6 +423,21 @@ mod traversable_expression_statement {
     link_types!(ExpressionStatement, TraversableExpressionStatement);
 
     impl<'a> traversable::ExpressionStatement<'a> {
+        pub fn new_stmt_in(
+            expression: Orphan<traversable::Expression<'a>>,
+            alloc: &'a Allocator,
+            tk: &mut Token,
+        ) -> Orphan<traversable::Statement<'a>> {
+            let expression = expression.inner();
+            let stmt = alloc.galloc(Self {
+                expression,
+                parent: traversable::Parent::None,
+            });
+            expression.set_parent(traversable::Parent::ExpressionStatement(stmt), tk);
+            // SAFETY: Node is newly created so by definition is not yet attached to AST
+            unsafe { Orphan::new(traversable::Statement::ExpressionStatement(stmt)) }
+        }
+
         pub fn expression(&self) -> traversable::Expression<'a> {
             self.expression
         }
@@ -535,6 +564,18 @@ mod traversable_identifier_reference {
     link_types!(IdentifierReference, TraversableIdentifierReference);
 
     impl<'a> traversable::IdentifierReference<'a> {
+        pub fn new_expr_in(
+            name: &'a str,
+            alloc: &'a Allocator,
+        ) -> Orphan<traversable::Expression<'a>> {
+            let expr = alloc.galloc(Self {
+                name,
+                parent: traversable::Parent::None,
+            });
+            // SAFETY: Node is newly created so by definition is not yet attached to AST
+            unsafe { Orphan::new(traversable::Expression::Identifier(expr)) }
+        }
+
         pub fn parent(&self) -> traversable::Parent<'a> {
             self.parent
         }
@@ -577,6 +618,18 @@ mod traversable_string_literal {
     link_types!(StringLiteral, TraversableStringLiteral);
 
     impl<'a> traversable::StringLiteral<'a> {
+        pub fn new_expr_in(
+            value: &'a str,
+            alloc: &'a Allocator,
+        ) -> Orphan<traversable::Expression<'a>> {
+            let expr = alloc.galloc(Self {
+                value,
+                parent: traversable::Parent::None,
+            });
+            // SAFETY: Node is newly created so by definition is not yet attached to AST
+            unsafe { Orphan::new(traversable::Expression::StringLiteral(expr)) }
+        }
+
         pub fn parent(&self) -> traversable::Parent<'a> {
             self.parent
         }
@@ -623,6 +676,27 @@ mod traversable_binary_expression {
     link_types!(BinaryExpression, TraversableBinaryExpression);
 
     impl<'a> traversable::BinaryExpression<'a> {
+        pub fn new_expr_in(
+            left: Orphan<traversable::Expression<'a>>,
+            operator: BinaryOperator,
+            right: Orphan<traversable::Expression<'a>>,
+            alloc: &'a Allocator,
+            tk: &mut Token,
+        ) -> Orphan<traversable::Expression<'a>> {
+            let left = left.inner();
+            let right = right.inner();
+            let expr = alloc.galloc(Self {
+                left,
+                operator,
+                right,
+                parent: traversable::Parent::None,
+            });
+            left.set_parent(traversable::Parent::BinaryExpressionLeft(expr), tk);
+            right.set_parent(traversable::Parent::BinaryExpressionRight(expr), tk);
+            // SAFETY: Node is newly created so by definition is not yet attached to AST
+            unsafe { Orphan::new(traversable::Expression::BinaryExpression(expr)) }
+        }
+
         pub fn left(&self) -> traversable::Expression<'a> {
             self.left
         }
@@ -734,6 +808,23 @@ mod traversable_unary_expression {
     link_types!(UnaryExpression, TraversableUnaryExpression);
 
     impl<'a> traversable::UnaryExpression<'a> {
+        pub fn new_expr_in(
+            operator: UnaryOperator,
+            argument: Orphan<traversable::Expression<'a>>,
+            alloc: &'a Allocator,
+            tk: &mut Token,
+        ) -> Orphan<traversable::Expression<'a>> {
+            let argument = argument.inner();
+            let expr = alloc.galloc(Self {
+                operator,
+                argument,
+                parent: traversable::Parent::None,
+            });
+            argument.set_parent(traversable::Parent::UnaryExpression(expr), tk);
+            // SAFETY: Node is newly created so by definition is not yet attached to AST
+            unsafe { Orphan::new(traversable::Expression::UnaryExpression(expr)) }
+        }
+
         pub fn argument(&self) -> traversable::Expression<'a> {
             self.argument
         }
