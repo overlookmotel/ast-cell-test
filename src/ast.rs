@@ -96,7 +96,7 @@
 //! # SAFETY
 //!
 //! * The size, alignment, and layout of all AST node types and their "traversable" counterparts
-//!   must be identical, so that transmuting `Statement` to `TraversableStatement` is sound.
+//!   must be identical, so that transmuting `Program` to `TraversableProgram` is sound.
 //! * All types must be `#[repr(C)]` to ensure predictable type layouts.
 //! * All enums must be `#[repr(C, u8)]` with explicit discriminants to ensure discriminants
 //!   match between the "standard" and "traversable" types.
