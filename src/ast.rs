@@ -1065,14 +1065,4 @@ mod traversable_parent {
     }
 
     link_types!(Parent, TraversableParent);
-
-    impl<'a> traversable::Parent<'a> {
-        pub(super) fn is_none(&self) -> bool {
-            matches!(self, Self::None)
-        }
-
-        pub(super) fn assert_none(&self) {
-            assert!(self.is_none());
-        }
-    }
 }
