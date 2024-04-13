@@ -964,8 +964,8 @@ mod traversable_parent {
 
 /// Convenience trait to copy `Copy` types without a temp var, where borrow-checker
 /// complains otherwise. Equivalent to `.clone()`, but clippy doesn't flag it.
-/// It's also useful to use `.copy()` instead of `.clone()` to indicate it's not
-/// an expensive operation.
+/// It's also useful for indicating this is a cheap operation, whereas `.clone()`
+/// often indicates an expensive operation.
 pub trait Copyable {
     #[inline]
     fn copy(self) -> Self
