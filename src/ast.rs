@@ -124,7 +124,8 @@
 // `#[repr(C)]`, we need to do it ourselves. We could write a macro which produces code to inspect
 // type layouts at compile time and error if there's padding in middle of a struct.
 // This isn't mission-critical for safety, just a perf optimization, so the macro could be behind
-// a feature, disabled by default, and we just compile with it enabled from time to time.
+// a feature, disabled by default, and we just compile with it enabled from time to time,
+// or in a separate "type sizes" job on CI.
 
 // TODO: We can actually relax GhostCell's rules a little, enabled by the fact that the AST is a tree
 // not a graph, and we've made it impossible for a node to be in the AST twice.
