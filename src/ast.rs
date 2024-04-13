@@ -167,8 +167,6 @@ pub mod traversable_traits {
     pub use traversable_string_literal::SharedStringLiteral;
     pub use traversable_binary_expression::SharedBinaryExpression;
     pub use traversable_unary_expression::SharedUnaryExpression;
-
-    pub use super::Copyable;
 }
 
 /// Macro to assert equivalence in size and alignment between standard and traversable types
@@ -414,8 +412,6 @@ mod traversable_statement {
             self.set_parent(traversable::Parent::None, tk);
         }
     }
-
-    impl<'a> Copyable for traversable::Statement<'a> {}
 }
 
 #[derive(Debug)]
@@ -578,8 +574,6 @@ mod traversable_expression {
             self.set_parent(traversable::Parent::None, tk);
         }
     }
-
-    impl<'a> Copyable for traversable::Expression<'a> {}
 }
 
 #[derive(Debug)]
@@ -1080,21 +1074,5 @@ mod traversable_parent {
         pub(super) fn assert_none(&self) {
             assert!(self.is_none());
         }
-    }
-}
-
-/// Convenience trait to copy `Copy` types without a temp var, where borrow-checker
-/// complains otherwise. Equivalent to `.clone()`, but clippy doesn't flag it.
-/// It's also useful for indicating this is a cheap operation, whereas `.clone()`
-/// often indicates an expensive operation.
-pub trait Copyable {
-    #[inline]
-    fn copy(self) -> Self
-    where
-        Self: Copy,
-    {
-        let me = self;
-        #[allow(clippy::let_and_return)]
-        me
     }
 }
