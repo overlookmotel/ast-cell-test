@@ -328,18 +328,30 @@ mod traversable_program {
             stmt: Orphan<traversable::Statement<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Statement<'a>> {
-            let old_stmt = self.body_stmt(index, tk);
-            old_stmt.remove_parent(tk);
-
             stmt.set_parent(traversable::Parent::ProgramBody(self), tk);
 
             // Unsafe code here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
             // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
-            // TODO: Do that instead and remove this `unsafe`.
+            // Currently code here is sound for `Program`, as `Program` cannot be in `Vec` of statements.
+            // But for other types, it would not be sound.
+            // e.g. `BlockStatement::body` contains statements, and we are unable to prevent circularity,
+            // so a `BlockStatement`'s body `Vec` could contain itself.
+            // As this stands, in such a case we would obtain an immut ref and a mut ref to same node
+            // simultaneously, which violates the aliasing rules.
+            // If `Vec` was `IndexMut`, I think can do this instead:
+            // ```
+            // let old_stmt = std::mem::replace(&mut self.borrow_mut(tk).body[index], GCell::new(stmt.inner()))
+            // let old_stmt = *old_stmt.borrow(tk);
+            // old_stmt.remove_parent(tk);
+            // return unsafe { Orphan::new(old_stmt) };
+            // ```
+            // i.e. we replace the cell itself, rather than the *contents* of the cell.
+            // TODO: Make `Vec` impl `IndexMut` and replace this dodgy unsafe code with the above.
             assert!(index < self.borrow(tk).body.len());
             // SAFETY: We checked `index` is in bounds.
-            let item = unsafe { &mut *self.borrow_mut(tk).body.as_mut_ptr().add(index) };
-            item.replace(stmt.inner(), tk);
+            let item = unsafe { &*self.borrow(tk).body.as_ptr().add(index) };
+            let old_stmt = item.replace(stmt.inner(), tk);
+            old_stmt.remove_parent(tk);
 
             // SAFETY: We have removed `old_stmt` from the AST
             unsafe { Orphan::new(old_stmt) }
@@ -353,10 +365,21 @@ mod traversable_program {
         ) -> Orphan<traversable::Statement<'a>> {
             // Unsafe code here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
             // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
-            // TODO: Do that instead and remove this `unsafe`.
+            // See comment in `replace_body_stmt` above for why this is not sound at present.
+            // If `Vec` was `IndexMut`, I think can do this instead:
+            // ```
+            // let stmt = std::mem::replace(
+            //   &mut self.borrow_mut(tk).body[index],
+            //   GCell::new(traversable::Statement::Dummy)
+            // );
+            // let stmt = *stmt.borrow(tk);
+            // stmt.remove_parent(tk);
+            // return unsafe { Orphan::new(old_stmt) };
+            // ```
+            // TODO: Make `Vec` impl `IndexMut` and replace this dodgy unsafe code with the above.
             assert!(index < self.borrow(tk).body.len());
             // SAFETY: We checked `index` is in bounds.
-            let item = unsafe { &mut *self.borrow_mut(tk).body.as_mut_ptr().add(index) };
+            let item = unsafe { &*self.borrow(tk).body.as_ptr().add(index) };
             let stmt = item.replace(traversable::Statement::Dummy, tk);
             stmt.remove_parent(tk);
             // SAFETY: We have removed `stmt` from the AST
