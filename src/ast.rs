@@ -313,7 +313,7 @@ mod traversable_program {
             stmt: Orphan<traversable::Statement<'a>>,
             tk: &mut Token,
         ) {
-            stmt.set_parent(traversable::Parent::Program(self), tk);
+            stmt.set_parent(traversable::Parent::ProgramBody(self), tk);
 
             // Unsafe code here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
             // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
@@ -342,7 +342,7 @@ mod traversable_program {
         }
 
         fn push_body_item(self, stmt: Orphan<traversable::Statement<'a>>, tk: &mut Token) {
-            stmt.set_parent(traversable::Parent::Program(self), tk);
+            stmt.set_parent(traversable::Parent::ProgramBody(self), tk);
             self.borrow_mut(tk).body.push(GCell::new(stmt.inner()));
         }
     }
@@ -433,7 +433,7 @@ mod traversable_expression_statement {
                 expression,
                 parent: traversable::Parent::None,
             });
-            expression.set_parent(traversable::Parent::ExpressionStatement(stmt), tk);
+            expression.set_parent(traversable::Parent::ExpressionStatementExpression(stmt), tk);
             // SAFETY: Node is newly created so by definition is not yet attached to AST
             unsafe { Orphan::new(traversable::Statement::ExpressionStatement(stmt)) }
         }
@@ -475,7 +475,7 @@ mod traversable_expression_statement {
             // TODO: Set parent of node being over-ridden to `Parent::None`.
             // Could also return the clobbered node (and maybe rename method to `replace`).
             // Same for all other `set_*` methods.
-            expr.set_parent(traversable::Parent::ExpressionStatement(self), tk);
+            expr.set_parent(traversable::Parent::ExpressionStatementExpression(self), tk);
             self.borrow_mut(tk).expression = expr.inner();
         }
 
@@ -820,7 +820,7 @@ mod traversable_unary_expression {
                 argument,
                 parent: traversable::Parent::None,
             });
-            argument.set_parent(traversable::Parent::UnaryExpression(expr), tk);
+            argument.set_parent(traversable::Parent::UnaryExpressionArgument(expr), tk);
             // SAFETY: Node is newly created so by definition is not yet attached to AST
             unsafe { Orphan::new(traversable::Expression::UnaryExpression(expr)) }
         }
@@ -865,7 +865,7 @@ mod traversable_unary_expression {
         }
 
         fn set_argument(self, expr: Orphan<traversable::Expression<'a>>, tk: &mut Token) {
-            expr.set_parent(traversable::Parent::UnaryExpression(self), tk);
+            expr.set_parent(traversable::Parent::UnaryExpressionArgument(self), tk);
             self.borrow_mut(tk).argument = expr.inner();
         }
 
@@ -895,6 +895,9 @@ pub enum UnaryOperator {
 
 /// Parent type used in standard AST.
 ///
+/// Encodes both the type of the parent, and child's location in the parent.
+/// i.e. variants for `BinaryExpressionLeft` and `BinaryExpressionRight`, not just `BinaryExpression`.
+///
 /// It is not so useful in the standard AST though, as the actual parent is not accessible via this type
 /// (such circular references would be UB in the standard AST).
 ///
@@ -912,11 +915,11 @@ pub enum UnaryOperator {
 #[repr(C, u8)]
 pub enum Parent<'a> {
     None = 0,
-    Program(ParentPointer<Program<'a>>) = 1,
-    ExpressionStatement(ParentPointer<ExpressionStatement<'a>>) = 2,
+    ProgramBody(ParentPointer<Program<'a>>) = 1,
+    ExpressionStatementExpression(ParentPointer<ExpressionStatement<'a>>) = 2,
     BinaryExpressionLeft(ParentPointer<BinaryExpression<'a>>) = 3,
     BinaryExpressionRight(ParentPointer<BinaryExpression<'a>>) = 4,
-    UnaryExpression(ParentPointer<UnaryExpression<'a>>) = 5,
+    UnaryExpressionArgument(ParentPointer<UnaryExpression<'a>>) = 5,
 }
 
 /// Wrapper around pointer to parent.
@@ -939,11 +942,11 @@ mod traversable_parent {
     #[repr(C, u8)]
     pub enum TraversableParent<'a> {
         None = 0,
-        Program(SharedBox<'a, traversable::Program<'a>>) = 1,
-        ExpressionStatement(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 2,
+        ProgramBody(SharedBox<'a, traversable::Program<'a>>) = 1,
+        ExpressionStatementExpression(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 2,
         BinaryExpressionLeft(SharedBox<'a, traversable::BinaryExpression<'a>>) = 3,
         BinaryExpressionRight(SharedBox<'a, traversable::BinaryExpression<'a>>) = 4,
-        UnaryExpression(SharedBox<'a, traversable::UnaryExpression<'a>>) = 5,
+        UnaryExpressionArgument(SharedBox<'a, traversable::UnaryExpression<'a>>) = 5,
     }
 
     link_types!(Parent, TraversableParent);

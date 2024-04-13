@@ -24,7 +24,7 @@ struct Semantic<'a> {
 
 impl<'a> Traverse<'a> for Semantic<'a> {
     fn visit_program(&mut self, program: SharedBox<'a, TraversableProgram<'a>>, tk: &mut Token) {
-        self.current_parent = Parent::Program(program);
+        self.current_parent = Parent::ProgramBody(program);
         self.walk_program(program, tk);
     }
 
@@ -36,7 +36,7 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         let expr_stmt_mut = expr_stmt.borrow_mut(tk);
         // SAFETY: We are here establishing the invariant of correct parent tracking
         unsafe { expr_stmt_mut.set_parent(self.current_parent) };
-        self.current_parent = Parent::ExpressionStatement(expr_stmt);
+        self.current_parent = Parent::ExpressionStatementExpression(expr_stmt);
         self.walk_expression_statement(expr_stmt, tk);
     }
 
@@ -80,7 +80,7 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         let unary_expr_mut = unary_expr.borrow_mut(tk);
         // SAFETY: We are here establishing the invariant of correct parent tracking
         unsafe { unary_expr_mut.set_parent(self.current_parent) };
-        self.current_parent = Parent::UnaryExpression(unary_expr);
+        self.current_parent = Parent::UnaryExpressionArgument(unary_expr);
         self.walk_unary_expression(unary_expr, tk);
     }
 }
