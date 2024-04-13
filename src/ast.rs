@@ -369,7 +369,7 @@ mod traversable_statement {
                 ExpressionStatement(expr_stmt) => {
                     expr_stmt.borrow_mut(tk).parent = parent;
                 }
-                Dummy => unreachable!("Cannot set parent of a dummy Statement"),
+                Dummy => {}
             }
         }
 
