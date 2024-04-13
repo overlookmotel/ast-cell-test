@@ -111,9 +111,6 @@
 // TODO: Check cannot produce duplicate nodes in AST using `GCell::borrow_mut` and then assigning to
 // that borrowed node to insert into AST without checks.
 
-// TODO: Place `parent` field in all types in same position to remove branches when setting/getting
-// parent for an `Expression` or `Statement`.
-
 // TODO: Re-order fields in AST types so they are efficiently packed with padding only at the end.
 // When types were `#[repr(rust)]`, compiler re-ordered the fields itself, but since they're now
 // `#[repr(C)]`, we need to do it ourselves. We could write a macro which produces code to inspect
@@ -417,8 +414,8 @@ mod traversable_statement {
 #[derive(Debug)]
 #[repr(C)]
 pub struct ExpressionStatement<'a> {
-    pub expression: Expression<'a>,
     pub parent: Parent<'a>,
+    pub expression: Expression<'a>,
 }
 
 mod traversable_expression_statement {
@@ -426,8 +423,8 @@ mod traversable_expression_statement {
 
     #[repr(C)]
     pub struct TraversableExpressionStatement<'a> {
-        pub(super) expression: traversable::Expression<'a>,
         pub(super) parent: traversable::Parent<'a>,
+        pub(super) expression: traversable::Expression<'a>,
     }
 
     link_types!(ExpressionStatement, TraversableExpressionStatement);
@@ -579,8 +576,8 @@ mod traversable_expression {
 #[derive(Debug)]
 #[repr(C)]
 pub struct IdentifierReference<'a> {
-    pub name: &'a str,
     pub parent: Parent<'a>,
+    pub name: &'a str,
 }
 
 mod traversable_identifier_reference {
@@ -588,8 +585,8 @@ mod traversable_identifier_reference {
 
     #[repr(C)]
     pub struct TraversableIdentifierReference<'a> {
-        pub name: &'a str,
         pub(super) parent: traversable::Parent<'a>,
+        pub name: &'a str,
     }
 
     link_types!(IdentifierReference, TraversableIdentifierReference);
@@ -640,8 +637,8 @@ mod traversable_identifier_reference {
 #[derive(Debug)]
 #[repr(C)]
 pub struct StringLiteral<'a> {
-    pub value: &'a str,
     pub parent: Parent<'a>,
+    pub value: &'a str,
 }
 
 mod traversable_string_literal {
@@ -649,8 +646,8 @@ mod traversable_string_literal {
 
     #[repr(C)]
     pub struct TraversableStringLiteral<'a> {
-        pub value: &'a str,
         pub(super) parent: traversable::Parent<'a>,
+        pub value: &'a str,
     }
 
     link_types!(StringLiteral, TraversableStringLiteral);
@@ -701,10 +698,10 @@ mod traversable_string_literal {
 #[derive(Debug)]
 #[repr(C)]
 pub struct BinaryExpression<'a> {
+    pub parent: Parent<'a>,
     pub left: Expression<'a>,
     pub operator: BinaryOperator,
     pub right: Expression<'a>,
-    pub parent: Parent<'a>,
 }
 
 mod traversable_binary_expression {
@@ -712,10 +709,10 @@ mod traversable_binary_expression {
 
     #[repr(C)]
     pub struct TraversableBinaryExpression<'a> {
+        pub(super) parent: traversable::Parent<'a>,
         pub(super) left: traversable::Expression<'a>,
         pub operator: BinaryOperator,
         pub(super) right: traversable::Expression<'a>,
-        pub(super) parent: traversable::Parent<'a>,
     }
 
     link_types!(BinaryExpression, TraversableBinaryExpression);
@@ -878,9 +875,9 @@ pub enum BinaryOperator {
 #[derive(Debug)]
 #[repr(C)]
 pub struct UnaryExpression<'a> {
+    pub parent: Parent<'a>,
     pub operator: UnaryOperator,
     pub argument: Expression<'a>,
-    pub parent: Parent<'a>,
 }
 
 mod traversable_unary_expression {
@@ -888,9 +885,9 @@ mod traversable_unary_expression {
 
     #[repr(C)]
     pub struct TraversableUnaryExpression<'a> {
+        pub(super) parent: traversable::Parent<'a>,
         pub operator: UnaryOperator,
         pub(super) argument: traversable::Expression<'a>,
-        pub(super) parent: traversable::Parent<'a>,
     }
 
     link_types!(UnaryExpression, TraversableUnaryExpression);
