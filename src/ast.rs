@@ -53,6 +53,7 @@
 //!
 //! Without specific handling to prevent it, it is possible to generate illegal ASTs with the same
 //! node connected to the AST in 2 or more places.
+//!
 //! This would be legal (but weird) in the the traversable AST, but is not legal in the standard AST,
 //! which uses `Box` for "links" between AST nodes. `Box` owns its contents, so you cannot do
 //! e.g. `let x = get_node(); let b1 = Box(x); let b2 = Box(x);`
@@ -71,10 +72,20 @@
 //! nodes are not public outside this file. Alteration of these fields must only be allowed via
 //! methods (e.g. `take_*` and `replace_*`), which enforce the no-duplicates rule.
 //!
-//! This implies that struct AST node types must *not* be `Clone`. If they were cloned, the `parent`
-//! of the clone would be incorrect. Enum AST node types can be `Copy` and `Clone` as they don't have
-//! a `parent` field. Each of their variants contains a `SharedBox<T>` ref to the specific node type,
-//! and *those* contain the `parent`.
+//! There must be **no** public API to obtain an owned struct AST node, otherwise it would be possible
+//! to circumvent the invariant via `borrow_mut`.
+//!
+//! e.g.:
+//! ```
+//! // This is not possible
+//! let unary_expr_mut = unary_expr_ref.borrow_mut(tk);
+//! *unary_expr_mut = get_owned_unary_expr_somehow();
+//! ```
+//!
+//! This implies that struct AST node types must **not** be `Clone`.
+//!
+//! Enum AST node types can be `Copy` and `Clone` as they don't have a `parent` field. Each of their
+//! variants contains a `SharedBox<T>` ref to the specific node type, and *those* contain the `parent`.
 //!
 //! # Cycles of nodes
 //!
@@ -107,9 +118,6 @@
 // TODO: Create the "Traversable" types with a macro to ensure they cannot be out of sync,
 // and apply `#[repr(C)]` (for structs) / `#[repr(C, u8)]` (for enums) programmatically,
 // so can't get forgotten. Generate accessor methods (`take_*` etc) with a macro/codegen too.
-
-// TODO: Check cannot produce duplicate nodes in AST using `GCell::borrow_mut` and then assigning to
-// that borrowed node to insert into AST without checks.
 
 // TODO: Re-order fields in AST types so they are efficiently packed with padding only at the end.
 // When types were `#[repr(rust)]`, compiler re-ordered the fields itself, but since they're now

@@ -69,10 +69,20 @@ To maintain these invariants, it is essential that access to `.parent` and other
 nodes are not public outside this file. Alteration of these fields must only be allowed via
 methods (e.g. `take_*` and `replace_*`), which enforce the no-duplicates rule.
 
-This implies that struct AST node types must *not* be `Clone`. If they were cloned, the `parent`
-of the clone would be incorrect. Enum AST node types can be `Copy` and `Clone` as they don't have
-a `parent` field. Each of their variants contains a `SharedBox<T>` ref to the specific node type,
-and *those* contain the `parent`.
+There must be **no** public API to obtain an owned struct AST node, otherwise it would be possible
+to circumvent the invariant via `borrow_mut`.
+
+e.g.:
+```rs
+// This is not possible
+let unary_expr_mut = unary_expr_ref.borrow_mut(tk);
+*unary_expr_mut = get_owned_unary_expr_somehow();
+```
+
+This implies that struct AST node types must **not** be `Clone`.
+
+Enum AST node types can be `Copy` and `Clone` as they don't have a `parent` field. Each of their
+variants contains a `SharedBox<T>` ref to the specific node type, and *those* contain the `parent`.
 
 ## Cycles of nodes
 
