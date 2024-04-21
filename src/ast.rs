@@ -451,7 +451,6 @@ mod traversable_program {
 #[repr(C, u8)]
 pub enum Statement<'a> {
     ExpressionStatement(Box<'a, ExpressionStatement<'a>>) = 0,
-    Dummy = 1,
 }
 
 // `Dummy` variant is a temporary placeholder indicating that a node has been removed from the AST.
@@ -650,7 +649,6 @@ pub enum Expression<'a> {
     Identifier(Box<'a, IdentifierReference<'a>>) = 1,
     BinaryExpression(Box<'a, BinaryExpression<'a>>) = 2,
     UnaryExpression(Box<'a, UnaryExpression<'a>>) = 3,
-    Dummy = 4,
 }
 
 mod traversable_expression {

@@ -81,6 +81,7 @@ mod tests {
         transform(&mut TransformTypeof, program);
 
         let stmt = program.body.first_mut().unwrap();
+        #[allow(irrefutable_let_patterns)]
         let expr_stmt = if let Statement::ExpressionStatement(expr_stmt) = stmt {
             expr_stmt
         } else {
@@ -92,7 +93,13 @@ mod tests {
         } else {
             unreachable!();
         };
-        let left = mem::replace(&mut bin_expr.left, Expression::Dummy);
+        let left = mem::replace(
+            &mut bin_expr.left,
+            Expression::StringLiteral(Box(alloc.alloc(StringLiteral {
+                value: "foo",
+                parent: Parent::None,
+            }))),
+        );
         let right = mem::replace(&mut bin_expr.right, left);
         bin_expr.left = right;
 
