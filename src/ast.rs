@@ -136,6 +136,18 @@
 // NB: *Cannot* mut borrow `parent` at same time, as cycles in AST are possible, so e.g. `left`
 // and `parent` could point to the same node.
 
+// TODO: Enforce that no dummy AST nodes left in AST via static means.
+// Maybe `TransformCtx` becomes `TransformCtx<const DUMMY_COUNT: usize>` and `take_*` returns a new
+// `&mut TransformCtx` with `DUMMY_COUNT` incremented.
+
+// TODO: Is it OK if user uses `replace_*` on a dummy AST node, and has a dummy node in their hands
+// which they can insert into AST somewhere else again? I'm not sure, but if only way to create a dummy
+// node in first place is `take_*` methods, and that increments the dummy count, then there'd be no harm
+// in inserting it into AST again with `replace_*` as long as dummy count is only decremented if node
+// node being removed is a dummy, and node being inserted is not. This would allow getting rid of
+// assertions, and the `set_*` methods. Although maybe compiler is smart enough to reason that the
+// assertions are infallible anyway and remove them?
+
 use std::mem;
 
 use oxc_allocator::{Allocator, Box, Vec};
@@ -457,18 +469,8 @@ pub enum Statement<'a> {
 // A valid AST should not contain any dummy nodes when transformation is complete, but it's required
 // to have this placeholder so you can remove a node from the AST in order to insert it somewhere else
 // instead. It's expected you'll replace the placeholder again with some other node.
-// Failure to do so will not lead to memory unsafety or UB, but it's not a valid AST and other tools
-// should probably panic if they find one.
-//
-// I cannot see any way to statically prevent this. `take_*` methods could return a marker type which
-// panics in it's `Drop` impl. When inserting a node back into same place in the AST again, this marker
-// type would be consumed without dropping it. If nothing is reinserted, the marker type will get dropped
-// at end of the function where it was created, and will panic.
-// But that is a runtime panic, not const time, so while it's probably better to trigger the panic early,
-// during the transform, as you'll be able to see where the mistake is, it's still not ideal.
-// Rust should not include the pannicking `drop` function in output if it can prove it won't be called.
-// But in any function which can panic, it will have to include it as `drop` gets called during unwinding.
-// This is probably not solveable.
+// Failure to do so will lead to a panic at end of the transform process, to prevent the AST being
+// used as a "standard" AST again, which would be UB as the `Dummy` variants don't exist in standard AST.
 mod traversable_statement {
     use super::*;
 
@@ -1186,7 +1188,12 @@ pub enum UnaryOperator {
 
 /// Dummy AST node.
 /// Opaque zero-sized type which cannot be constructed outside of this module,
-/// so that consumer cannot create dummy AST nodes.
+/// so that consumer cannot create dummy AST nodes. They can only exist in the AST itself.
+/// TODO: This doesn't work because `Dummy` is `Copy` and `Clone`. Consumer can just take a node from
+/// AST, and then look at that place in AST and clone it. They then have an owned `Dummy`.
+/// However, I don't think this is a problem, as they can't insert it into the AST again, because
+/// they can't get an `Orphan` containing it.
+/// Therefore I think no point to this type and can remove it again.
 #[derive(Clone, Copy)]
 pub struct Dummy(());
 
