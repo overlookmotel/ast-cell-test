@@ -444,7 +444,7 @@ mod traversable_program {
             assert!(index < self.borrow(ctx).body.len());
             // SAFETY: We checked `index` is in bounds.
             let item = unsafe { &*self.borrow(ctx).body.as_ptr().add(index) };
-            let stmt = item.replace(traversable::Statement::Dummy(Dummy::new()), ctx);
+            let stmt = item.replace(traversable::Statement::Dummy, ctx);
             assert!(!stmt.is_dummy(), "Cannot take a dummy AST node");
             stmt.remove_parent(ctx);
             ctx.increment_dummy_count();
@@ -479,7 +479,7 @@ mod traversable_statement {
     #[repr(C, u8)]
     pub enum TraversableStatement<'a> {
         ExpressionStatement(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 0,
-        Dummy(Dummy) = 1,
+        Dummy = 1,
     }
 
     link_types!(Statement, TraversableStatement);
@@ -491,7 +491,7 @@ mod traversable_statement {
                 ExpressionStatement(expr_stmt) => {
                     expr_stmt.borrow_mut(ctx).parent = parent;
                 }
-                Dummy(_) => {}
+                Dummy => {}
             }
         }
 
@@ -502,7 +502,7 @@ mod traversable_statement {
 
         #[inline]
         pub(super) fn is_dummy(&self) -> bool {
-            matches!(self, traversable::Statement::Dummy(_))
+            matches!(self, traversable::Statement::Dummy)
         }
     }
 }
@@ -622,7 +622,7 @@ mod traversable_expression_statement {
         fn take_expression(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
                 &mut self.borrow_mut(ctx).expression,
-                traversable::Expression::Dummy(Dummy::new()),
+                traversable::Expression::Dummy,
             );
             assert!(!expr.is_dummy(), "Cannot take a dummy AST node");
             expr.remove_parent(ctx);
@@ -664,7 +664,7 @@ mod traversable_expression {
         Identifier(SharedBox<'a, traversable::IdentifierReference<'a>>) = 1,
         BinaryExpression(SharedBox<'a, traversable::BinaryExpression<'a>>) = 2,
         UnaryExpression(SharedBox<'a, traversable::UnaryExpression<'a>>) = 3,
-        Dummy(Dummy) = 4,
+        Dummy = 4,
     }
 
     link_types!(Expression, TraversableExpression);
@@ -685,7 +685,7 @@ mod traversable_expression {
                 UnaryExpression(expr) => {
                     expr.borrow_mut(ctx).parent = parent;
                 }
-                Dummy(_) => {}
+                Dummy => {}
             }
         }
 
@@ -695,7 +695,7 @@ mod traversable_expression {
 
         #[inline]
         pub(super) fn is_dummy(&self) -> bool {
-            matches!(self, traversable::Expression::Dummy(_))
+            matches!(self, traversable::Expression::Dummy)
         }
     }
 }
@@ -991,7 +991,7 @@ mod traversable_binary_expression {
         fn take_left(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
                 &mut self.borrow_mut(ctx).left,
-                traversable::Expression::Dummy(Dummy::new()),
+                traversable::Expression::Dummy,
             );
             assert!(!expr.is_dummy(), "Cannot take a dummy AST node");
             expr.remove_parent(ctx);
@@ -1004,7 +1004,7 @@ mod traversable_binary_expression {
         fn take_right(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
                 &mut self.borrow_mut(ctx).right,
-                traversable::Expression::Dummy(Dummy::new()),
+                traversable::Expression::Dummy,
             );
             assert!(!expr.is_dummy(), "Cannot take a dummy AST node");
             expr.remove_parent(ctx);
@@ -1151,7 +1151,7 @@ mod traversable_unary_expression {
         fn take_argument(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
                 &mut self.borrow_mut(ctx).argument,
-                traversable::Expression::Dummy(Dummy::new()),
+                traversable::Expression::Dummy,
             );
             assert!(!expr.is_dummy(), "Cannot take a dummy AST node");
             expr.remove_parent(ctx);
@@ -1184,24 +1184,6 @@ pub enum UnaryOperator {
     Typeof = 4,
     Void = 5,
     Delete = 6,
-}
-
-/// Dummy AST node.
-/// Opaque zero-sized type which cannot be constructed outside of this module,
-/// so that consumer cannot create dummy AST nodes. They can only exist in the AST itself.
-/// TODO: This doesn't work because `Dummy` is `Copy` and `Clone`. Consumer can just take a node from
-/// AST, and then look at that place in AST and clone it. They then have an owned `Dummy`.
-/// However, I don't think this is a problem, as they can't insert it into the AST again, because
-/// they can't get an `Orphan` containing it.
-/// Therefore I think no point to this type and can remove it again.
-#[derive(Clone, Copy)]
-pub struct Dummy(());
-
-impl Dummy {
-    #[inline]
-    fn new() -> Self {
-        Self(())
-    }
 }
 
 /// Parent type used in standard AST.
