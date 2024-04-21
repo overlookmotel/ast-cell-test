@@ -10,6 +10,16 @@ use crate::{
     cell::{GCell, SharedBox, Token},
 };
 
+pub struct TransformCtx {
+    pub token: Token,
+}
+
+impl TransformCtx {
+    fn new(token: Token) -> Self {
+        Self { token }
+    }
+}
+
 /// Run transform visitor on AST.
 ///
 /// The provided transformer must implement `Traverse` and will be run on a version of the AST
@@ -19,7 +29,8 @@ use crate::{
 pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program<'a>) {
     // Generate `Token` which transformer uses to access the AST.
     // SAFETY: We only create one token, and it never leaves this function.
-    let mut token = unsafe { Token::new_unchecked() };
+    let token = unsafe { Token::new_unchecked() };
+    let mut ctx = TransformCtx::new(token);
 
     // Convert AST to traversable version.
     // SAFETY: All standard and traversable AST types are mirrors of each other, with identical layouts.
@@ -36,7 +47,7 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
         GCell::from_mut(unsafe { &mut *(program as *mut Program as *mut TraversableProgram) });
 
     // Run transformer on the traversable AST
-    Traverse::visit_program(transformer, program, &mut token);
+    Traverse::visit_program(transformer, program, &mut ctx);
 
     // The access token goes out of scope at this point, which guarantees that no references
     // (either mutable or immutable) to the traversable AST or the token still exist.
@@ -46,29 +57,37 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
 }
 
 pub trait Traverse<'a> {
-    fn visit_program(&mut self, program: SharedBox<'a, TraversableProgram<'a>>, tk: &mut Token) {
-        self.walk_program(program, tk)
+    fn visit_program(
+        &mut self,
+        program: SharedBox<'a, TraversableProgram<'a>>,
+        ctx: &mut TransformCtx,
+    ) {
+        self.walk_program(program, ctx)
     }
 
-    fn walk_program(&mut self, program: SharedBox<'a, TraversableProgram<'a>>, tk: &mut Token) {
+    fn walk_program(
+        &mut self,
+        program: SharedBox<'a, TraversableProgram<'a>>,
+        ctx: &mut TransformCtx,
+    ) {
         // Need to read `len()` on each turn of the loop, as `visit_statement` (or a child of it)
         // could add more nodes to the `Vec`
         let mut index = 0;
-        while index < program.body_len(tk) {
-            let stmt = program.body_stmt(index, tk);
-            self.visit_statement(stmt, tk);
+        while index < program.body_len(ctx) {
+            let stmt = program.body_stmt(index, ctx);
+            self.visit_statement(stmt, ctx);
             index += 1;
         }
     }
 
-    fn visit_statement(&mut self, stmt: Statement<'a>, tk: &mut Token) {
-        self.walk_statement(stmt, tk)
+    fn visit_statement(&mut self, stmt: Statement<'a>, ctx: &mut TransformCtx) {
+        self.walk_statement(stmt, ctx)
     }
 
-    fn walk_statement(&mut self, stmt: Statement<'a>, tk: &mut Token) {
+    fn walk_statement(&mut self, stmt: Statement<'a>, ctx: &mut TransformCtx) {
         match stmt {
             Statement::ExpressionStatement(expr_stmt) => {
-                self.visit_expression_statement(expr_stmt, tk)
+                self.visit_expression_statement(expr_stmt, ctx)
             }
             Statement::Dummy => unreachable!(),
         }
@@ -77,36 +96,36 @@ pub trait Traverse<'a> {
     fn visit_expression_statement(
         &mut self,
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
-        tk: &mut Token,
+        ctx: &mut TransformCtx,
     ) {
-        self.walk_expression_statement(expr_stmt, tk);
+        self.walk_expression_statement(expr_stmt, ctx);
     }
 
     fn walk_expression_statement(
         &mut self,
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
-        tk: &mut Token,
+        ctx: &mut TransformCtx,
     ) {
-        self.visit_expression(expr_stmt.expression(tk), tk);
+        self.visit_expression(expr_stmt.expression(ctx), ctx);
     }
 
-    fn visit_expression(&mut self, expr: Expression<'a>, tk: &mut Token) {
-        self.walk_expression(expr, tk);
+    fn visit_expression(&mut self, expr: Expression<'a>, ctx: &mut TransformCtx) {
+        self.walk_expression(expr, ctx);
     }
 
-    fn walk_expression(&mut self, expr: Expression<'a>, tk: &mut Token) {
+    fn walk_expression(&mut self, expr: Expression<'a>, ctx: &mut TransformCtx) {
         match expr {
             Expression::Identifier(id) => {
-                self.visit_identifier_reference(id, tk);
+                self.visit_identifier_reference(id, ctx);
             }
             Expression::StringLiteral(str_lit) => {
-                self.visit_string_literal(str_lit, tk);
+                self.visit_string_literal(str_lit, ctx);
             }
             Expression::BinaryExpression(bin_expr) => {
-                self.visit_binary_expression(bin_expr, tk);
+                self.visit_binary_expression(bin_expr, ctx);
             }
             Expression::UnaryExpression(unary_expr) => {
-                self.visit_unary_expression(unary_expr, tk);
+                self.visit_unary_expression(unary_expr, ctx);
             }
             Expression::Dummy => unreachable!(),
         }
@@ -116,43 +135,48 @@ pub trait Traverse<'a> {
     fn visit_identifier_reference(
         &mut self,
         id: SharedBox<'a, IdentifierReference<'a>>,
-        tk: &mut Token,
+        ctx: &mut TransformCtx,
     ) {
     }
 
     #[allow(unused_variables)]
-    fn visit_string_literal(&mut self, str_lit: SharedBox<'a, StringLiteral<'a>>, tk: &mut Token) {}
+    fn visit_string_literal(
+        &mut self,
+        str_lit: SharedBox<'a, StringLiteral<'a>>,
+        ctx: &mut TransformCtx,
+    ) {
+    }
 
     fn visit_binary_expression(
         &mut self,
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
-        tk: &mut Token,
+        ctx: &mut TransformCtx,
     ) {
-        self.walk_binary_expression(bin_expr, tk);
+        self.walk_binary_expression(bin_expr, ctx);
     }
 
     fn walk_binary_expression(
         &mut self,
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
-        tk: &mut Token,
+        ctx: &mut TransformCtx,
     ) {
-        self.visit_expression(bin_expr.left(tk), tk);
-        self.visit_expression(bin_expr.right(tk), tk);
+        self.visit_expression(bin_expr.left(ctx), ctx);
+        self.visit_expression(bin_expr.right(ctx), ctx);
     }
 
     fn visit_unary_expression(
         &mut self,
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
-        tk: &mut Token,
+        ctx: &mut TransformCtx,
     ) {
-        self.walk_unary_expression(unary_expr, tk);
+        self.walk_unary_expression(unary_expr, ctx);
     }
 
     fn walk_unary_expression(
         &mut self,
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
-        tk: &mut Token,
+        ctx: &mut TransformCtx,
     ) {
-        self.visit_expression(unary_expr.argument(tk), tk);
+        self.visit_expression(unary_expr.argument(ctx), ctx);
     }
 }

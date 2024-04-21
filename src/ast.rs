@@ -140,7 +140,10 @@ use std::mem;
 
 use oxc_allocator::{Allocator, Box, Vec};
 
-use crate::cell::{GCell, SharedBox, SharedVec, Token};
+use crate::{
+    cell::{GCell, SharedBox, SharedVec},
+    TransformCtx,
+};
 
 /// Module namespace for traversable AST node types
 #[allow(unused_imports)]
@@ -288,37 +291,40 @@ mod traversable_program {
             self.body.len()
         }
 
-        pub fn body_stmt(&self, index: usize, tk: &Token) -> traversable::Statement<'a> {
-            *self.body[index].borrow(tk)
+        pub fn body_stmt(&self, index: usize, ctx: &TransformCtx) -> traversable::Statement<'a> {
+            *self.body[index].borrow(&ctx.token)
         }
     }
 
     pub trait SharedProgram<'a> {
-        fn body_len(self, tk: &Token) -> usize;
-        fn body_stmt(self, index: usize, tk: &Token) -> traversable::Statement<'a>;
+        fn body_len(self, ctx: &TransformCtx) -> usize;
+        fn body_stmt(self, index: usize, ctx: &TransformCtx) -> traversable::Statement<'a>;
         fn replace_body_stmt(
             self,
             index: usize,
             stmt: Orphan<traversable::Statement<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Statement<'a>>;
-        fn take_body_stmt(self, index: usize, tk: &mut Token)
-            -> Orphan<traversable::Statement<'a>>;
-        fn push_body_stmt(self, stmt: Orphan<traversable::Statement<'a>>, tk: &mut Token);
+        fn take_body_stmt(
+            self,
+            index: usize,
+            ctx: &mut TransformCtx,
+        ) -> Orphan<traversable::Statement<'a>>;
+        fn push_body_stmt(self, stmt: Orphan<traversable::Statement<'a>>, ctx: &mut TransformCtx);
     }
 
     // TODO: We could probably abstract much of this into methods on a `SharedVec` type.
     // TODO: Implement more `Vec` methods.
     impl<'a> SharedProgram<'a> for SharedBox<'a, traversable::Program<'a>> {
         /// Convenience method for getting `body.len()` from a ref.
-        fn body_len(self, tk: &Token) -> usize {
-            self.borrow(tk).body.len()
+        fn body_len(self, ctx: &TransformCtx) -> usize {
+            self.borrow(&ctx.token).body.len()
         }
 
         /// Convenience method for getting a body statement from a ref.
         #[inline]
-        fn body_stmt(self, index: usize, tk: &Token) -> traversable::Statement<'a> {
-            *self.borrow(tk).body[index].borrow(tk)
+        fn body_stmt(self, index: usize, ctx: &TransformCtx) -> traversable::Statement<'a> {
+            *self.borrow(&ctx.token).body[index].borrow(&ctx.token)
         }
 
         /// Replace statement at `index` of `Program` body, and return previous value.
@@ -326,9 +332,9 @@ mod traversable_program {
             self,
             index: usize,
             stmt: Orphan<traversable::Statement<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Statement<'a>> {
-            stmt.set_parent(traversable::Parent::ProgramBody(self), tk);
+            stmt.set_parent(traversable::Parent::ProgramBody(self), ctx);
 
             // Unsafe code here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
             // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
@@ -347,11 +353,11 @@ mod traversable_program {
             // ```
             // i.e. we replace the cell itself, rather than the *contents* of the cell.
             // TODO: Make `Vec` impl `IndexMut` and replace this dodgy unsafe code with the above.
-            assert!(index < self.borrow(tk).body.len());
+            assert!(index < self.borrow(&ctx.token).body.len());
             // SAFETY: We checked `index` is in bounds.
-            let item = unsafe { &*self.borrow(tk).body.as_ptr().add(index) };
-            let old_stmt = item.replace(stmt.inner(), tk);
-            old_stmt.remove_parent(tk);
+            let item = unsafe { &*self.borrow(&ctx.token).body.as_ptr().add(index) };
+            let old_stmt = item.replace(stmt.inner(), &mut ctx.token);
+            old_stmt.remove_parent(ctx);
 
             // SAFETY: We have removed `old_stmt` from the AST
             unsafe { Orphan::new(old_stmt) }
@@ -361,7 +367,7 @@ mod traversable_program {
         fn take_body_stmt(
             self,
             index: usize,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Statement<'a>> {
             // Unsafe code here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
             // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
@@ -377,18 +383,20 @@ mod traversable_program {
             // return unsafe { Orphan::new(old_stmt) };
             // ```
             // TODO: Make `Vec` impl `IndexMut` and replace this dodgy unsafe code with the above.
-            assert!(index < self.borrow(tk).body.len());
+            assert!(index < self.borrow(&ctx.token).body.len());
             // SAFETY: We checked `index` is in bounds.
-            let item = unsafe { &*self.borrow(tk).body.as_ptr().add(index) };
-            let stmt = item.replace(traversable::Statement::Dummy, tk);
-            stmt.remove_parent(tk);
+            let item = unsafe { &*self.borrow(&ctx.token).body.as_ptr().add(index) };
+            let stmt = item.replace(traversable::Statement::Dummy, &mut ctx.token);
+            stmt.remove_parent(ctx);
             // SAFETY: We have removed `stmt` from the AST
             unsafe { Orphan::new(stmt) }
         }
 
-        fn push_body_stmt(self, stmt: Orphan<traversable::Statement<'a>>, tk: &mut Token) {
-            stmt.set_parent(traversable::Parent::ProgramBody(self), tk);
-            self.borrow_mut(tk).body.push(GCell::new(stmt.inner()));
+        fn push_body_stmt(self, stmt: Orphan<traversable::Statement<'a>>, ctx: &mut TransformCtx) {
+            stmt.set_parent(traversable::Parent::ProgramBody(self), ctx);
+            self.borrow_mut(&mut ctx.token)
+                .body
+                .push(GCell::new(stmt.inner()));
         }
     }
 }
@@ -430,19 +438,19 @@ mod traversable_statement {
     link_types!(Statement, TraversableStatement);
 
     impl<'a> traversable::Statement<'a> {
-        pub(super) fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
+        pub(super) fn set_parent(&self, parent: traversable::Parent<'a>, ctx: &mut TransformCtx) {
             use TraversableStatement::*;
             match self {
                 ExpressionStatement(expr_stmt) => {
-                    expr_stmt.borrow_mut(tk).parent = parent;
+                    expr_stmt.borrow_mut(&mut ctx.token).parent = parent;
                 }
                 Dummy => {}
             }
         }
 
         #[inline]
-        pub(super) fn remove_parent(&self, tk: &mut Token) {
-            self.set_parent(traversable::Parent::None, tk);
+        pub(super) fn remove_parent(&self, ctx: &mut TransformCtx) {
+            self.set_parent(traversable::Parent::None, ctx);
         }
     }
 }
@@ -469,14 +477,17 @@ mod traversable_expression_statement {
         pub fn new_stmt_in(
             expression: Orphan<traversable::Expression<'a>>,
             alloc: &'a Allocator,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Statement<'a>> {
             let expression = expression.inner();
             let stmt = alloc.galloc(Self {
                 expression,
                 parent: traversable::Parent::None,
             });
-            expression.set_parent(traversable::Parent::ExpressionStatementExpression(stmt), tk);
+            expression.set_parent(
+                traversable::Parent::ExpressionStatementExpression(stmt),
+                ctx,
+            );
             // SAFETY: Node is newly created so by definition is not yet attached to AST
             unsafe { Orphan::new(traversable::Statement::ExpressionStatement(stmt)) }
         }
@@ -497,49 +508,52 @@ mod traversable_expression_statement {
     }
 
     pub trait SharedExpressionStatement<'a> {
-        fn parent(self, tk: &Token) -> traversable::Parent<'a>;
-        fn expression(self, tk: &Token) -> traversable::Expression<'a>;
+        fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a>;
+        fn expression(self, ctx: &TransformCtx) -> traversable::Expression<'a>;
         fn replace_expression(
             self,
             expr: Orphan<traversable::Expression<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>>;
-        fn take_expression(self, tk: &mut Token) -> Orphan<traversable::Expression<'a>>;
+        fn take_expression(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>>;
     }
 
     impl<'a> SharedExpressionStatement<'a> for SharedBox<'a, traversable::ExpressionStatement<'a>> {
         /// Convenience method for getting `parent` from a ref.
-        fn parent(self, tk: &Token) -> traversable::Parent<'a> {
-            self.borrow(tk).parent
+        fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a> {
+            self.borrow(&ctx.token).parent
         }
 
         /// Convenience method for getting `expression` from a ref.
         #[inline]
-        fn expression(self, tk: &Token) -> traversable::Expression<'a> {
-            self.borrow(tk).expression
+        fn expression(self, ctx: &TransformCtx) -> traversable::Expression<'a> {
+            self.borrow(&ctx.token).expression
         }
 
         /// Replace value of `expression` field, and return previous value.
         fn replace_expression(
             self,
             expr: Orphan<traversable::Expression<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
-            let old_expression = self.expression(tk);
-            old_expression.remove_parent(tk);
-            expr.set_parent(traversable::Parent::ExpressionStatementExpression(self), tk);
-            self.borrow_mut(tk).expression = expr.inner();
+            let old_expression = self.expression(ctx);
+            old_expression.remove_parent(ctx);
+            expr.set_parent(
+                traversable::Parent::ExpressionStatementExpression(self),
+                ctx,
+            );
+            self.borrow_mut(&mut ctx.token).expression = expr.inner();
             // SAFETY: We have removed `old_expression` from the AST
             unsafe { Orphan::new(old_expression) }
         }
 
         /// Extract value of `expression` field, and replace with a dummy expression.
-        fn take_expression(self, tk: &mut Token) -> Orphan<traversable::Expression<'a>> {
+        fn take_expression(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
-                &mut self.borrow_mut(tk).expression,
+                &mut self.borrow_mut(&mut ctx.token).expression,
                 traversable::Expression::Dummy,
             );
-            expr.remove_parent(tk);
+            expr.remove_parent(ctx);
             // SAFETY: We have removed `expr` from the AST
             unsafe { Orphan::new(expr) }
         }
@@ -550,9 +564,9 @@ mod traversable_expression_statement {
         pub fn expression_statement(
             &self,
             expression: Orphan<traversable::Expression<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Statement<'a>> {
-            traversable::ExpressionStatement::new_stmt_in(expression, self.allocator, tk)
+            traversable::ExpressionStatement::new_stmt_in(expression, self.allocator, ctx)
         }
     }
 }
@@ -584,27 +598,27 @@ mod traversable_expression {
     link_types!(Expression, TraversableExpression);
 
     impl<'a> traversable::Expression<'a> {
-        pub(super) fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
+        pub(super) fn set_parent(&self, parent: traversable::Parent<'a>, ctx: &mut TransformCtx) {
             use TraversableExpression::*;
             match self {
                 StringLiteral(expr) => {
-                    expr.borrow_mut(tk).parent = parent;
+                    expr.borrow_mut(&mut ctx.token).parent = parent;
                 }
                 Identifier(expr) => {
-                    expr.borrow_mut(tk).parent = parent;
+                    expr.borrow_mut(&mut ctx.token).parent = parent;
                 }
                 BinaryExpression(expr) => {
-                    expr.borrow_mut(tk).parent = parent;
+                    expr.borrow_mut(&mut ctx.token).parent = parent;
                 }
                 UnaryExpression(expr) => {
-                    expr.borrow_mut(tk).parent = parent;
+                    expr.borrow_mut(&mut ctx.token).parent = parent;
                 }
                 Dummy => {}
             }
         }
 
-        pub(super) fn remove_parent(&self, tk: &mut Token) {
-            self.set_parent(traversable::Parent::None, tk);
+        pub(super) fn remove_parent(&self, ctx: &mut TransformCtx) {
+            self.set_parent(traversable::Parent::None, ctx);
         }
     }
 }
@@ -652,13 +666,13 @@ mod traversable_identifier_reference {
     }
 
     pub trait SharedIdentifierReference<'a> {
-        fn parent(self, tk: &Token) -> traversable::Parent<'a>;
+        fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a>;
     }
 
     impl<'a> SharedIdentifierReference<'a> for SharedBox<'a, traversable::IdentifierReference<'a>> {
         /// Convenience method for getting `parent` from a ref.
-        fn parent(self, tk: &Token) -> traversable::Parent<'a> {
-            self.borrow(tk).parent
+        fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a> {
+            self.borrow(&ctx.token).parent
         }
     }
 
@@ -713,13 +727,13 @@ mod traversable_string_literal {
     }
 
     pub trait SharedStringLiteral<'a> {
-        fn parent(self, tk: &Token) -> traversable::Parent<'a>;
+        fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a>;
     }
 
     impl<'a> SharedStringLiteral<'a> for SharedBox<'a, traversable::StringLiteral<'a>> {
         /// Convenience method for getting `parent` from a ref.
-        fn parent(self, tk: &Token) -> traversable::Parent<'a> {
-            self.borrow(tk).parent
+        fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a> {
+            self.borrow(&ctx.token).parent
         }
     }
 
@@ -759,7 +773,7 @@ mod traversable_binary_expression {
             operator: BinaryOperator,
             right: Orphan<traversable::Expression<'a>>,
             alloc: &'a Allocator,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
             let left = left.inner();
             let right = right.inner();
@@ -769,8 +783,8 @@ mod traversable_binary_expression {
                 right,
                 parent: traversable::Parent::None,
             });
-            left.set_parent(traversable::Parent::BinaryExpressionLeft(expr), tk);
-            right.set_parent(traversable::Parent::BinaryExpressionRight(expr), tk);
+            left.set_parent(traversable::Parent::BinaryExpressionLeft(expr), ctx);
+            right.set_parent(traversable::Parent::BinaryExpressionRight(expr), ctx);
             // SAFETY: Node is newly created so by definition is not yet attached to AST
             unsafe { Orphan::new(traversable::Expression::BinaryExpression(expr)) }
         }
@@ -795,57 +809,57 @@ mod traversable_binary_expression {
     }
 
     pub trait SharedBinaryExpression<'a> {
-        fn parent(self, tk: &Token) -> traversable::Parent<'a>;
-        fn left(self, tk: &mut Token) -> traversable::Expression<'a>;
-        fn right(self, tk: &mut Token) -> traversable::Expression<'a>;
-        fn operator(self, tk: &mut Token) -> BinaryOperator;
+        fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a>;
+        fn left(self, ctx: &mut TransformCtx) -> traversable::Expression<'a>;
+        fn right(self, ctx: &mut TransformCtx) -> traversable::Expression<'a>;
+        fn operator(self, ctx: &mut TransformCtx) -> BinaryOperator;
         fn replace_left(
             self,
             expr: Orphan<traversable::Expression<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>>;
         fn replace_right(
             self,
             expr: Orphan<traversable::Expression<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>>;
-        fn take_left(self, tk: &mut Token) -> Orphan<traversable::Expression<'a>>;
-        fn take_right(self, tk: &mut Token) -> Orphan<traversable::Expression<'a>>;
+        fn take_left(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>>;
+        fn take_right(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>>;
     }
 
     impl<'a> SharedBinaryExpression<'a> for SharedBox<'a, traversable::BinaryExpression<'a>> {
         /// Convenience method for getting `parent` from a ref.
-        fn parent(self, tk: &Token) -> traversable::Parent<'a> {
-            self.borrow(tk).parent
+        fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a> {
+            self.borrow(&ctx.token).parent
         }
 
         /// Convenience method for getting `left` from a ref.
         #[inline]
-        fn left(self, tk: &mut Token) -> traversable::Expression<'a> {
-            self.borrow(tk).left
+        fn left(self, ctx: &mut TransformCtx) -> traversable::Expression<'a> {
+            self.borrow(&ctx.token).left
         }
 
         /// Convenience method for getting `right` from a ref.
         #[inline]
-        fn right(self, tk: &mut Token) -> traversable::Expression<'a> {
-            self.borrow(tk).right
+        fn right(self, ctx: &mut TransformCtx) -> traversable::Expression<'a> {
+            self.borrow(&ctx.token).right
         }
 
         /// Convenience method for getting `operator` from a ref.
-        fn operator(self, tk: &mut Token) -> BinaryOperator {
-            self.borrow(tk).operator
+        fn operator(self, ctx: &mut TransformCtx) -> BinaryOperator {
+            self.borrow(&ctx.token).operator
         }
 
         /// Replace value of `left` field, and return previous value.
         fn replace_left(
             self,
             expr: Orphan<traversable::Expression<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
-            let old_left = self.left(tk);
-            old_left.remove_parent(tk);
-            expr.set_parent(traversable::Parent::BinaryExpressionLeft(self), tk);
-            self.borrow_mut(tk).left = expr.inner();
+            let old_left = self.left(ctx);
+            old_left.remove_parent(ctx);
+            expr.set_parent(traversable::Parent::BinaryExpressionLeft(self), ctx);
+            self.borrow_mut(&mut ctx.token).left = expr.inner();
             // SAFETY: We have removed `old_left` from the AST
             unsafe { Orphan::new(old_left) }
         }
@@ -854,34 +868,34 @@ mod traversable_binary_expression {
         fn replace_right(
             self,
             expr: Orphan<traversable::Expression<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
-            let old_right = self.right(tk);
-            old_right.remove_parent(tk);
-            expr.set_parent(traversable::Parent::BinaryExpressionRight(self), tk);
-            self.borrow_mut(tk).right = expr.inner();
+            let old_right = self.right(ctx);
+            old_right.remove_parent(ctx);
+            expr.set_parent(traversable::Parent::BinaryExpressionRight(self), ctx);
+            self.borrow_mut(&mut ctx.token).right = expr.inner();
             // SAFETY: We have removed `old_right` from the AST
             unsafe { Orphan::new(old_right) }
         }
 
         /// Extract value of `left` field, and replace with a dummy expression.
-        fn take_left(self, tk: &mut Token) -> Orphan<traversable::Expression<'a>> {
+        fn take_left(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
-                &mut self.borrow_mut(tk).left,
+                &mut self.borrow_mut(&mut ctx.token).left,
                 traversable::Expression::Dummy,
             );
-            expr.remove_parent(tk);
+            expr.remove_parent(ctx);
             // SAFETY: We have removed `expr` from the AST
             unsafe { Orphan::new(expr) }
         }
 
         /// Extract value of `right` field, and replace with a dummy expression.
-        fn take_right(self, tk: &mut Token) -> Orphan<traversable::Expression<'a>> {
+        fn take_right(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
-                &mut self.borrow_mut(tk).right,
+                &mut self.borrow_mut(&mut ctx.token).right,
                 traversable::Expression::Dummy,
             );
-            expr.remove_parent(tk);
+            expr.remove_parent(ctx);
             // SAFETY: We have removed `expr` from the AST
             unsafe { Orphan::new(expr) }
         }
@@ -894,9 +908,9 @@ mod traversable_binary_expression {
             left: Orphan<traversable::Expression<'a>>,
             operator: BinaryOperator,
             right: Orphan<traversable::Expression<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
-            traversable::BinaryExpression::new_expr_in(left, operator, right, self.allocator, tk)
+            traversable::BinaryExpression::new_expr_in(left, operator, right, self.allocator, ctx)
         }
     }
 }
@@ -933,7 +947,7 @@ mod traversable_unary_expression {
             operator: UnaryOperator,
             argument: Orphan<traversable::Expression<'a>>,
             alloc: &'a Allocator,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
             let argument = argument.inner();
             let expr = alloc.galloc(Self {
@@ -941,7 +955,7 @@ mod traversable_unary_expression {
                 argument,
                 parent: traversable::Parent::None,
             });
-            argument.set_parent(traversable::Parent::UnaryExpressionArgument(expr), tk);
+            argument.set_parent(traversable::Parent::UnaryExpressionArgument(expr), ctx);
             // SAFETY: Node is newly created so by definition is not yet attached to AST
             unsafe { Orphan::new(traversable::Expression::UnaryExpression(expr)) }
         }
@@ -962,55 +976,55 @@ mod traversable_unary_expression {
     }
 
     pub trait SharedUnaryExpression<'a> {
-        fn parent(self, tk: &Token) -> traversable::Parent<'a>;
-        fn argument(self, tk: &mut Token) -> traversable::Expression<'a>;
-        fn operator(self, tk: &mut Token) -> UnaryOperator;
+        fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a>;
+        fn argument(self, ctx: &mut TransformCtx) -> traversable::Expression<'a>;
+        fn operator(self, ctx: &mut TransformCtx) -> UnaryOperator;
         fn replace_argument(
             self,
             expr: Orphan<traversable::Expression<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>>;
-        fn take_argument(self, tk: &mut Token) -> Orphan<traversable::Expression<'a>>;
+        fn take_argument(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>>;
     }
 
     impl<'a> SharedUnaryExpression<'a> for SharedBox<'a, traversable::UnaryExpression<'a>> {
         /// Convenience method for getting `parent` from a ref.
-        fn parent(self, tk: &Token) -> traversable::Parent<'a> {
-            self.borrow(tk).parent
+        fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a> {
+            self.borrow(&ctx.token).parent
         }
 
         /// Convenience method for getting `argument` from a ref.
         #[inline]
-        fn argument(self, tk: &mut Token) -> traversable::Expression<'a> {
-            self.borrow(tk).argument
+        fn argument(self, ctx: &mut TransformCtx) -> traversable::Expression<'a> {
+            self.borrow(&ctx.token).argument
         }
 
         /// Convenience method for getting `operator` from a ref.
-        fn operator(self, tk: &mut Token) -> UnaryOperator {
-            self.borrow(tk).operator
+        fn operator(self, ctx: &mut TransformCtx) -> UnaryOperator {
+            self.borrow(&ctx.token).operator
         }
 
         /// Replace value of `argument` field, and return previous value.
         fn replace_argument(
             self,
             expr: Orphan<traversable::Expression<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
-            let old_argument = self.argument(tk);
-            old_argument.remove_parent(tk);
-            expr.set_parent(traversable::Parent::UnaryExpressionArgument(self), tk);
-            self.borrow_mut(tk).argument = expr.inner();
+            let old_argument = self.argument(ctx);
+            old_argument.remove_parent(ctx);
+            expr.set_parent(traversable::Parent::UnaryExpressionArgument(self), ctx);
+            self.borrow_mut(&mut ctx.token).argument = expr.inner();
             // SAFETY: We have removed `old_right` from the AST
             unsafe { Orphan::new(old_argument) }
         }
 
         /// Extract value of `argument` field, and replace with a dummy expression.
-        fn take_argument(self, tk: &mut Token) -> Orphan<traversable::Expression<'a>> {
+        fn take_argument(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
-                &mut self.borrow_mut(tk).argument,
+                &mut self.borrow_mut(&mut ctx.token).argument,
                 traversable::Expression::Dummy,
             );
-            expr.remove_parent(tk);
+            expr.remove_parent(ctx);
             // SAFETY: We have removed `expr` from the AST
             unsafe { Orphan::new(expr) }
         }
@@ -1022,9 +1036,9 @@ mod traversable_unary_expression {
             &self,
             operator: UnaryOperator,
             argument: Orphan<traversable::Expression<'a>>,
-            tk: &mut Token,
+            ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
-            traversable::UnaryExpression::new_expr_in(operator, argument, self.allocator, tk)
+            traversable::UnaryExpression::new_expr_in(operator, argument, self.allocator, ctx)
         }
     }
 }

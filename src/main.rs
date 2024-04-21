@@ -12,10 +12,10 @@ use ast::{
     traversable_traits::*,
     BinaryOperator, UnaryOperator,
 };
-use cell::{SharedBox, Token};
+use cell::SharedBox;
 use print::Printer;
 use semantic::semantic;
-use traverse::{transform, Traverse};
+use traverse::{transform, TransformCtx, Traverse};
 use visit::Visit;
 
 fn main() {
@@ -35,21 +35,21 @@ impl<'a> Traverse<'a> for TransformTypeof {
     fn visit_unary_expression(
         &mut self,
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
-        tk: &mut Token,
+        ctx: &mut TransformCtx,
     ) {
-        self.walk_unary_expression(unary_expr, tk);
+        self.walk_unary_expression(unary_expr, ctx);
 
-        if unary_expr.operator(tk) == UnaryOperator::Typeof {
-            if let Parent::BinaryExpressionLeft(bin_expr) = unary_expr.parent(tk) {
+        if unary_expr.operator(ctx) == UnaryOperator::Typeof {
+            if let Parent::BinaryExpressionLeft(bin_expr) = unary_expr.parent(ctx) {
                 if matches!(
-                    bin_expr.operator(tk),
+                    bin_expr.operator(ctx),
                     BinaryOperator::Equality | BinaryOperator::StrictEquality
-                ) && matches!(bin_expr.right(tk), Expression::StringLiteral(_))
+                ) && matches!(bin_expr.right(ctx), Expression::StringLiteral(_))
                 {
                     // Swap left and right of binary expression
-                    let left = bin_expr.take_left(tk);
-                    let right = bin_expr.replace_right(left, tk);
-                    bin_expr.replace_left(right, tk);
+                    let left = bin_expr.take_left(ctx);
+                    let right = bin_expr.replace_right(left, ctx);
+                    bin_expr.replace_left(right, ctx);
                 }
             }
         }
