@@ -37,7 +37,7 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
         ctx: &mut TransformCtx,
     ) {
-        let expr_stmt_mut = expr_stmt.borrow_mut(&mut ctx.token);
+        let expr_stmt_mut = expr_stmt.borrow_mut(ctx);
         // SAFETY: We are here establishing the invariant of correct parent tracking
         unsafe { expr_stmt_mut.set_parent(self.current_parent) };
         self.current_parent = Parent::ExpressionStatementExpression(expr_stmt);
@@ -50,7 +50,7 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         id: SharedBox<'a, IdentifierReference<'a>>,
         ctx: &mut TransformCtx,
     ) {
-        let id_mut = id.borrow_mut(&mut ctx.token);
+        let id_mut = id.borrow_mut(ctx);
         // SAFETY: We are here establishing the invariant of correct parent tracking
         unsafe { id_mut.set_parent(self.current_parent) };
     }
@@ -61,7 +61,7 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         str_lit: SharedBox<'a, StringLiteral<'a>>,
         ctx: &mut TransformCtx,
     ) {
-        let str_lit_mut = str_lit.borrow_mut(&mut ctx.token);
+        let str_lit_mut = str_lit.borrow_mut(ctx);
         // SAFETY: We are here establishing the invariant of correct parent tracking
         unsafe { str_lit_mut.set_parent(self.current_parent) };
     }
@@ -71,7 +71,7 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
         ctx: &mut TransformCtx,
     ) {
-        let bin_expr_mut = bin_expr.borrow_mut(&mut ctx.token);
+        let bin_expr_mut = bin_expr.borrow_mut(ctx);
         // SAFETY: We are here establishing the invariant of correct parent tracking
         unsafe { bin_expr_mut.set_parent(self.current_parent) };
         self.current_parent = Parent::BinaryExpressionLeft(bin_expr);
@@ -85,7 +85,7 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
         ctx: &mut TransformCtx,
     ) {
-        let unary_expr_mut = unary_expr.borrow_mut(&mut ctx.token);
+        let unary_expr_mut = unary_expr.borrow_mut(ctx);
         // SAFETY: We are here establishing the invariant of correct parent tracking
         unsafe { unary_expr_mut.set_parent(self.current_parent) };
         self.current_parent = Parent::UnaryExpressionArgument(unary_expr);

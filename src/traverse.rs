@@ -1,3 +1,4 @@
+pub use crate::cell::TransformCtx;
 use crate::{
     ast::{
         traversable::{
@@ -7,18 +8,8 @@ use crate::{
         traversable_traits::*,
         Program,
     },
-    cell::{GCell, SharedBox, Token},
+    cell::{GCell, SharedBox},
 };
-
-pub struct TransformCtx {
-    pub token: Token,
-}
-
-impl TransformCtx {
-    fn new(token: Token) -> Self {
-        Self { token }
-    }
-}
 
 /// Run transform visitor on AST.
 ///
@@ -27,10 +18,9 @@ impl TransformCtx {
 /// Once the transform is finished, caller can continue to use the standard version of the AST
 /// in the usual way, without interior mutability.
 pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program<'a>) {
-    // Generate `Token` which transformer uses to access the AST.
-    // SAFETY: We only create one token, and it never leaves this function.
-    let token = unsafe { Token::new_unchecked() };
-    let mut ctx = TransformCtx::new(token);
+    // Generate `TransformCtx` which transformer uses to access the AST.
+    // SAFETY: We only create one context object, and it never leaves this function.
+    let mut ctx = unsafe { TransformCtx::new_unchecked() };
 
     // Convert AST to traversable version.
     // SAFETY: All standard and traversable AST types are mirrors of each other, with identical layouts.
@@ -38,8 +28,8 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
     // As we hold a `&mut` reference to the AST, it's guaranteed there are no other live references.
     // We extend the lifetime of ref to `TraversableProgram` to `&'a TraversableProgram`.
     // This is safe because the node is in the arena, and doesn't move, so the ref is valid for `'a`.
-    // `transformer` could smuggle refs out, but could not use them without a token which is only
-    // available in this function.
+    // `transformer` could smuggle refs out, but could not use them without a context object which is
+    // only available in this function.
     // TODO: Refs could be made invalid if the allocator is reset. Hopefully this is impossible
     // because `Allocator::reset` takes a `&mut` ref to the allocator, so you can't hold any immut refs
     // to data in the arena at that time. But make sure.
@@ -49,9 +39,9 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
     // Run transformer on the traversable AST
     Traverse::visit_program(transformer, program, &mut ctx);
 
-    // The access token goes out of scope at this point, which guarantees that no references
-    // (either mutable or immutable) to the traversable AST or the token still exist.
-    // If the transformer attempts to hold on to any references to the AST, or to the token,
+    // The context object goes out of scope at this point, which guarantees that no references
+    // (either mutable or immutable) to the traversable AST or the context object still exist.
+    // If the transformer attempts to hold on to any references to the AST, or to the context object,
     // this will produce a compile-time error.
     // Therefore, the caller can now safely continue using the `&mut Statement` that they passed in.
 }

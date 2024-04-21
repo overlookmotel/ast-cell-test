@@ -1,13 +1,15 @@
-//! Cell type and token for traversing AST.
+//! Cell type and context object for traversing AST.
 //!
 //! Based on `GhostCell`.
 //! All method implementations copied verbatim from original version by paper's authors
 //! https://gitlab.mpi-sws.org/FP/ghostcell/-/blob/master/ghostcell/src/lib.rs
 //! and `ghost_cell` crate https://docs.rs/ghost-cell .
 //!
+//! `TransformCtx` plays the same role as `GhostToken` does for `GhostCell`.
+//!
 //! Only difference is that instead of using a lifetime to constrain the life of access tokens,
-//! here we provide only an unsafe method `Token::new_unchecked` and the user must maintain
-//! the invariant that only one token may be "in play" at same time
+//! here we provide only an unsafe method `TransformCtx::new_unchecked` and the user must maintain
+//! the invariant that only one context object may be "in play" at same time
 //! (see below for exactly what "in play" means).
 //!
 //! This alteration removes a lifetime, and avoids the unergonomic pattern of all the code that
@@ -15,32 +17,33 @@
 
 use std::cell::UnsafeCell;
 
-/// Access token for traversing AST.
+/// Context object for traversing AST.
 #[repr(transparent)]
-pub struct Token(());
+pub struct TransformCtx {
+    _dummy: (),
+}
 
-impl Token {
-    /// Create new access token for traversing AST.
+impl TransformCtx {
+    /// Create new transform context for traversing AST.
     ///
     /// It is imperative that any code operating on a single AST does not have access to more
-    /// than 1 token. `GCell` uses this guarantee to make it impossible to obtain a `&mut`
-    /// reference to any AST node while another reference exists. If more than 1 token is "in play",
+    /// than 1 transform context. `GCell` uses this guarantee to make it impossible to obtain a `&mut`
+    /// reference to any AST node while another reference exists. If more than 1 ctx is "in play",
     /// this guarantee can be broken, and may lead to undefined behavior.
     ///
     /// This function is used internally by `transform`, but probably should not be used elsewhere.
     ///
-    /// It is permissable to create multiple tokens which are never used together on the same AST.
+    /// It is permissable to create multiple ctx objects which are never used together on the same AST.
     /// In practice, this means it is possible to transform multiple ASTs on different threads
     /// simultaneously.
     ///
-    /// If operating on multiple ASTs together (e.g. concatenating 2 files), then a single token
-    /// must be used to access all the ASTs involved in the operation NOT 1 token per AST.
+    /// If operating on multiple ASTs together (e.g. concatenating 2 files), then a single ctx object
+    /// must be used to access all the ASTs involved in the operation NOT 1 ctx per AST.
     ///
     /// # SAFETY
-    /// Caller must ensure only a single token is used with any AST at one time.
-    #[inline]
+    /// Caller must ensure only a single context object is used with any AST at one time.
     pub unsafe fn new_unchecked() -> Self {
-        Self(())
+        Self { _dummy: () }
     }
 }
 
@@ -66,12 +69,12 @@ impl<T> GCell<T> {
 #[allow(dead_code, unused_variables)]
 impl<T: ?Sized> GCell<T> {
     #[inline]
-    pub fn borrow<'a>(&'a self, tk: &'a Token) -> &'a T {
+    pub fn borrow<'a>(&'a self, ctx: &'a TransformCtx) -> &'a T {
         unsafe { &*self.value.get() }
     }
 
     #[inline]
-    pub fn borrow_mut<'a>(&'a self, tk: &'a mut Token) -> &'a mut T {
+    pub fn borrow_mut<'a>(&'a self, ctx: &'a mut TransformCtx) -> &'a mut T {
         unsafe { &mut *self.value.get() }
     }
 
@@ -102,24 +105,24 @@ impl<T> GCell<[T]> {
 #[allow(dead_code)]
 impl<T> GCell<T> {
     #[inline]
-    pub fn replace(&self, value: T, tk: &mut Token) -> T {
-        std::mem::replace(self.borrow_mut(tk), value)
+    pub fn replace(&self, value: T, ctx: &mut TransformCtx) -> T {
+        std::mem::replace(self.borrow_mut(ctx), value)
     }
 
     #[inline]
-    pub fn take(&self, tk: &mut Token) -> T
+    pub fn take(&self, ctx: &mut TransformCtx) -> T
     where
         T: Default,
     {
-        self.replace(T::default(), tk)
+        self.replace(T::default(), ctx)
     }
 }
 
 #[allow(dead_code)]
 impl<T: Clone> GCell<T> {
     #[inline]
-    pub fn clone(&self, tk: &Token) -> Self {
-        GCell::new(self.borrow(tk).clone())
+    pub fn clone(&self, ctx: &TransformCtx) -> Self {
+        GCell::new(self.borrow(ctx).clone())
     }
 }
 
