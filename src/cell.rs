@@ -21,6 +21,7 @@ use std::cell::UnsafeCell;
 #[repr(transparent)]
 pub struct TransformCtx {
     _dummy: (),
+    dummy_count: usize,
 }
 
 impl TransformCtx {
@@ -43,7 +44,25 @@ impl TransformCtx {
     /// # SAFETY
     /// Caller must ensure only a single context object is used with any AST at one time.
     pub unsafe fn new_unchecked() -> Self {
-        Self { _dummy: () }
+        Self {
+            _dummy: (),
+            dummy_count: 0,
+        }
+    }
+
+    pub fn dummy_count(&self) -> usize {
+        self.dummy_count
+    }
+
+    pub fn increment_dummy_count(&mut self) {
+        self.dummy_count += 1;
+    }
+
+    // SAFETY: Caller must ensure that a dummy AST node has actually been removed from the AST.
+    // This is essential for the soundness of treating the AST as a "standard" AST again after
+    // traversal.
+    pub unsafe fn decrement_dummy_count(&mut self) {
+        self.dummy_count -= 1;
     }
 }
 

@@ -299,6 +299,12 @@ mod traversable_program {
     pub trait SharedProgram<'a> {
         fn body_len(self, ctx: &TransformCtx) -> usize;
         fn body_stmt(self, index: usize, ctx: &TransformCtx) -> traversable::Statement<'a>;
+        fn set_body_stmt(
+            self,
+            index: usize,
+            stmt: Orphan<traversable::Statement<'a>>,
+            ctx: &mut TransformCtx,
+        );
         fn replace_body_stmt(
             self,
             index: usize,
@@ -325,6 +331,42 @@ mod traversable_program {
         #[inline]
         fn body_stmt(self, index: usize, ctx: &TransformCtx) -> traversable::Statement<'a> {
             *self.borrow(ctx).body[index].borrow(ctx)
+        }
+
+        /// Set statement at `index` of `Program` body.
+        fn set_body_stmt(
+            self,
+            index: usize,
+            stmt: Orphan<traversable::Statement<'a>>,
+            ctx: &mut TransformCtx,
+        ) {
+            stmt.set_parent(traversable::Parent::ProgramBody(self), ctx);
+
+            // Unsafe code here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
+            // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
+            // Currently code here is sound for `Program`, as `Program` cannot be in `Vec` of statements.
+            // But for other types, it would not be sound.
+            // e.g. `BlockStatement::body` contains statements, and we are unable to prevent circularity,
+            // so a `BlockStatement`'s body `Vec` could contain itself.
+            // As this stands, in such a case we would obtain an immut ref and a mut ref to same node
+            // simultaneously, which violates the aliasing rules.
+            // If `Vec` was `IndexMut`, I think can do this instead:
+            // ```
+            // let old_stmt = std::mem::replace(&mut self.borrow_mut(tk).body[index], GCell::new(stmt.inner()))
+            // let old_stmt = *old_stmt.borrow(tk);
+            // old_stmt.remove_parent(tk);
+            // return unsafe { Orphan::new(old_stmt) };
+            // ```
+            // i.e. we replace the cell itself, rather than the *contents* of the cell.
+            // TODO: Make `Vec` impl `IndexMut` and replace this dodgy unsafe code with the above.
+            assert!(index < self.borrow(ctx).body.len());
+            // SAFETY: We checked `index` is in bounds.
+            let item = unsafe { &*self.borrow(ctx).body.as_ptr().add(index) };
+            let old_stmt = item.replace(stmt.inner(), ctx);
+            if old_stmt.is_dummy() {
+                // SAFETY: Dummy has been removed
+                unsafe { ctx.decrement_dummy_count() };
+            }
         }
 
         /// Replace statement at `index` of `Program` body, and return previous value.
@@ -357,6 +399,10 @@ mod traversable_program {
             // SAFETY: We checked `index` is in bounds.
             let item = unsafe { &*self.borrow(ctx).body.as_ptr().add(index) };
             let old_stmt = item.replace(stmt.inner(), ctx);
+            assert!(
+                !old_stmt.is_dummy(),
+                "Cannot replace a dummy AST node. Use `set_body_stmt` instead."
+            );
             old_stmt.remove_parent(ctx);
 
             // SAFETY: We have removed `old_stmt` from the AST
@@ -386,8 +432,10 @@ mod traversable_program {
             assert!(index < self.borrow(ctx).body.len());
             // SAFETY: We checked `index` is in bounds.
             let item = unsafe { &*self.borrow(ctx).body.as_ptr().add(index) };
-            let stmt = item.replace(traversable::Statement::Dummy, ctx);
+            let stmt = item.replace(traversable::Statement::Dummy(Dummy::new()), ctx);
+            assert!(!stmt.is_dummy(), "Cannot take a dummy AST node");
             stmt.remove_parent(ctx);
+            ctx.increment_dummy_count();
             // SAFETY: We have removed `stmt` from the AST
             unsafe { Orphan::new(stmt) }
         }
@@ -402,8 +450,8 @@ mod traversable_program {
 #[derive(Debug)]
 #[repr(C, u8)]
 pub enum Statement<'a> {
-    Dummy = 0,
-    ExpressionStatement(Box<'a, ExpressionStatement<'a>>) = 1,
+    ExpressionStatement(Box<'a, ExpressionStatement<'a>>) = 0,
+    Dummy = 1,
 }
 
 // `Dummy` variant is a temporary placeholder indicating that a node has been removed from the AST.
@@ -429,8 +477,8 @@ mod traversable_statement {
     #[derive(Clone, Copy)]
     #[repr(C, u8)]
     pub enum TraversableStatement<'a> {
-        Dummy = 0,
-        ExpressionStatement(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 1,
+        ExpressionStatement(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 0,
+        Dummy(Dummy) = 1,
     }
 
     link_types!(Statement, TraversableStatement);
@@ -442,13 +490,18 @@ mod traversable_statement {
                 ExpressionStatement(expr_stmt) => {
                     expr_stmt.borrow_mut(ctx).parent = parent;
                 }
-                Dummy => {}
+                Dummy(_) => {}
             }
         }
 
         #[inline]
         pub(super) fn remove_parent(&self, ctx: &mut TransformCtx) {
             self.set_parent(traversable::Parent::None, ctx);
+        }
+
+        #[inline]
+        pub(super) fn is_dummy(&self) -> bool {
+            matches!(self, traversable::Statement::Dummy(_))
         }
     }
 }
@@ -508,6 +561,7 @@ mod traversable_expression_statement {
     pub trait SharedExpressionStatement<'a> {
         fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a>;
         fn expression(self, ctx: &TransformCtx) -> traversable::Expression<'a>;
+        fn set_expression(self, expr: Orphan<traversable::Expression<'a>>, ctx: &mut TransformCtx);
         fn replace_expression(
             self,
             expr: Orphan<traversable::Expression<'a>>,
@@ -528,6 +582,20 @@ mod traversable_expression_statement {
             self.borrow(ctx).expression
         }
 
+        /// Set value of `expression` field.
+        fn set_expression(self, expr: Orphan<traversable::Expression<'a>>, ctx: &mut TransformCtx) {
+            let old_expression = self.expression(ctx);
+            if old_expression.is_dummy() {
+                // SAFETY: Dummy has been removed
+                unsafe { ctx.decrement_dummy_count() };
+            }
+            expr.set_parent(
+                traversable::Parent::ExpressionStatementExpression(self),
+                ctx,
+            );
+            self.borrow_mut(ctx).expression = expr.inner();
+        }
+
         /// Replace value of `expression` field, and return previous value.
         fn replace_expression(
             self,
@@ -535,6 +603,10 @@ mod traversable_expression_statement {
             ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
             let old_expression = self.expression(ctx);
+            assert!(
+                !old_expression.is_dummy(),
+                "Cannot replace a dummy AST node. Use `set_expression` instead."
+            );
             old_expression.remove_parent(ctx);
             expr.set_parent(
                 traversable::Parent::ExpressionStatementExpression(self),
@@ -549,9 +621,11 @@ mod traversable_expression_statement {
         fn take_expression(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
                 &mut self.borrow_mut(ctx).expression,
-                traversable::Expression::Dummy,
+                traversable::Expression::Dummy(Dummy::new()),
             );
+            assert!(!expr.is_dummy(), "Cannot take a dummy AST node");
             expr.remove_parent(ctx);
+            ctx.increment_dummy_count();
             // SAFETY: We have removed `expr` from the AST
             unsafe { Orphan::new(expr) }
         }
@@ -572,11 +646,11 @@ mod traversable_expression_statement {
 #[derive(Debug)]
 #[repr(C, u8)]
 pub enum Expression<'a> {
-    Dummy = 0,
-    StringLiteral(Box<'a, StringLiteral<'a>>) = 1,
-    Identifier(Box<'a, IdentifierReference<'a>>) = 2,
-    BinaryExpression(Box<'a, BinaryExpression<'a>>) = 3,
-    UnaryExpression(Box<'a, UnaryExpression<'a>>) = 4,
+    StringLiteral(Box<'a, StringLiteral<'a>>) = 0,
+    Identifier(Box<'a, IdentifierReference<'a>>) = 1,
+    BinaryExpression(Box<'a, BinaryExpression<'a>>) = 2,
+    UnaryExpression(Box<'a, UnaryExpression<'a>>) = 3,
+    Dummy = 4,
 }
 
 mod traversable_expression {
@@ -586,11 +660,11 @@ mod traversable_expression {
     #[derive(Clone, Copy)]
     #[repr(C, u8)]
     pub enum TraversableExpression<'a> {
-        Dummy = 0,
-        StringLiteral(SharedBox<'a, traversable::StringLiteral<'a>>) = 1,
-        Identifier(SharedBox<'a, traversable::IdentifierReference<'a>>) = 2,
-        BinaryExpression(SharedBox<'a, traversable::BinaryExpression<'a>>) = 3,
-        UnaryExpression(SharedBox<'a, traversable::UnaryExpression<'a>>) = 4,
+        StringLiteral(SharedBox<'a, traversable::StringLiteral<'a>>) = 0,
+        Identifier(SharedBox<'a, traversable::IdentifierReference<'a>>) = 1,
+        BinaryExpression(SharedBox<'a, traversable::BinaryExpression<'a>>) = 2,
+        UnaryExpression(SharedBox<'a, traversable::UnaryExpression<'a>>) = 3,
+        Dummy(Dummy) = 4,
     }
 
     link_types!(Expression, TraversableExpression);
@@ -611,12 +685,17 @@ mod traversable_expression {
                 UnaryExpression(expr) => {
                     expr.borrow_mut(ctx).parent = parent;
                 }
-                Dummy => {}
+                Dummy(_) => {}
             }
         }
 
         pub(super) fn remove_parent(&self, ctx: &mut TransformCtx) {
             self.set_parent(traversable::Parent::None, ctx);
+        }
+
+        #[inline]
+        pub(super) fn is_dummy(&self) -> bool {
+            matches!(self, traversable::Expression::Dummy(_))
         }
     }
 }
@@ -811,6 +890,8 @@ mod traversable_binary_expression {
         fn left(self, ctx: &mut TransformCtx) -> traversable::Expression<'a>;
         fn right(self, ctx: &mut TransformCtx) -> traversable::Expression<'a>;
         fn operator(self, ctx: &mut TransformCtx) -> BinaryOperator;
+        fn set_left(self, expr: Orphan<traversable::Expression<'a>>, ctx: &mut TransformCtx);
+        fn set_right(self, expr: Orphan<traversable::Expression<'a>>, ctx: &mut TransformCtx);
         fn replace_left(
             self,
             expr: Orphan<traversable::Expression<'a>>,
@@ -848,6 +929,28 @@ mod traversable_binary_expression {
             self.borrow(ctx).operator
         }
 
+        /// Set value of `left` field.
+        fn set_left(self, expr: Orphan<traversable::Expression<'a>>, ctx: &mut TransformCtx) {
+            let old_left = self.left(ctx);
+            if old_left.is_dummy() {
+                // SAFETY: Dummy is being removed
+                unsafe { ctx.decrement_dummy_count() };
+            }
+            expr.set_parent(traversable::Parent::BinaryExpressionLeft(self), ctx);
+            self.borrow_mut(ctx).left = expr.inner();
+        }
+
+        /// Set value of `right` field.
+        fn set_right(self, expr: Orphan<traversable::Expression<'a>>, ctx: &mut TransformCtx) {
+            let old_right = self.right(ctx);
+            if old_right.is_dummy() {
+                // SAFETY: Dummy is being removed
+                unsafe { ctx.decrement_dummy_count() };
+            }
+            expr.set_parent(traversable::Parent::BinaryExpressionRight(self), ctx);
+            self.borrow_mut(ctx).right = expr.inner();
+        }
+
         /// Replace value of `left` field, and return previous value.
         fn replace_left(
             self,
@@ -855,6 +958,10 @@ mod traversable_binary_expression {
             ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
             let old_left = self.left(ctx);
+            assert!(
+                !old_left.is_dummy(),
+                "Cannot replace a dummy AST node. Use `set_left` instead."
+            );
             old_left.remove_parent(ctx);
             expr.set_parent(traversable::Parent::BinaryExpressionLeft(self), ctx);
             self.borrow_mut(ctx).left = expr.inner();
@@ -869,6 +976,10 @@ mod traversable_binary_expression {
             ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
             let old_right = self.right(ctx);
+            assert!(
+                !old_right.is_dummy(),
+                "Cannot replace a dummy AST node. Use `set_right` instead."
+            );
             old_right.remove_parent(ctx);
             expr.set_parent(traversable::Parent::BinaryExpressionRight(self), ctx);
             self.borrow_mut(ctx).right = expr.inner();
@@ -880,9 +991,11 @@ mod traversable_binary_expression {
         fn take_left(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
                 &mut self.borrow_mut(ctx).left,
-                traversable::Expression::Dummy,
+                traversable::Expression::Dummy(Dummy::new()),
             );
+            assert!(!expr.is_dummy(), "Cannot take a dummy AST node");
             expr.remove_parent(ctx);
+            ctx.increment_dummy_count();
             // SAFETY: We have removed `expr` from the AST
             unsafe { Orphan::new(expr) }
         }
@@ -891,9 +1004,11 @@ mod traversable_binary_expression {
         fn take_right(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
                 &mut self.borrow_mut(ctx).right,
-                traversable::Expression::Dummy,
+                traversable::Expression::Dummy(Dummy::new()),
             );
+            assert!(!expr.is_dummy(), "Cannot take a dummy AST node");
             expr.remove_parent(ctx);
+            ctx.increment_dummy_count();
             // SAFETY: We have removed `expr` from the AST
             unsafe { Orphan::new(expr) }
         }
@@ -977,6 +1092,7 @@ mod traversable_unary_expression {
         fn parent(self, ctx: &TransformCtx) -> traversable::Parent<'a>;
         fn argument(self, ctx: &mut TransformCtx) -> traversable::Expression<'a>;
         fn operator(self, ctx: &mut TransformCtx) -> UnaryOperator;
+        fn set_argument(self, expr: Orphan<traversable::Expression<'a>>, ctx: &mut TransformCtx);
         fn replace_argument(
             self,
             expr: Orphan<traversable::Expression<'a>>,
@@ -1002,6 +1118,17 @@ mod traversable_unary_expression {
             self.borrow(ctx).operator
         }
 
+        /// Set value of `argument` field.
+        fn set_argument(self, expr: Orphan<traversable::Expression<'a>>, ctx: &mut TransformCtx) {
+            let old_argument = self.argument(ctx);
+            if old_argument.is_dummy() {
+                // SAFETY: Dummy is being removed
+                unsafe { ctx.decrement_dummy_count() };
+            }
+            expr.set_parent(traversable::Parent::UnaryExpressionArgument(self), ctx);
+            self.borrow_mut(ctx).argument = expr.inner();
+        }
+
         /// Replace value of `argument` field, and return previous value.
         fn replace_argument(
             self,
@@ -1009,6 +1136,10 @@ mod traversable_unary_expression {
             ctx: &mut TransformCtx,
         ) -> Orphan<traversable::Expression<'a>> {
             let old_argument = self.argument(ctx);
+            assert!(
+                !old_argument.is_dummy(),
+                "Cannot replace a dummy AST node. Use `set_argument` instead."
+            );
             old_argument.remove_parent(ctx);
             expr.set_parent(traversable::Parent::UnaryExpressionArgument(self), ctx);
             self.borrow_mut(ctx).argument = expr.inner();
@@ -1020,9 +1151,11 @@ mod traversable_unary_expression {
         fn take_argument(self, ctx: &mut TransformCtx) -> Orphan<traversable::Expression<'a>> {
             let expr = mem::replace(
                 &mut self.borrow_mut(ctx).argument,
-                traversable::Expression::Dummy,
+                traversable::Expression::Dummy(Dummy::new()),
             );
+            assert!(!expr.is_dummy(), "Cannot take a dummy AST node");
             expr.remove_parent(ctx);
+            ctx.increment_dummy_count();
             // SAFETY: We have removed `expr` from the AST
             unsafe { Orphan::new(expr) }
         }
@@ -1051,6 +1184,19 @@ pub enum UnaryOperator {
     Typeof = 4,
     Void = 5,
     Delete = 6,
+}
+
+/// Dummy AST node.
+/// Opaque zero-sized type which cannot be constructed outside of this module,
+/// so that consumer cannot create dummy AST nodes.
+#[derive(Clone, Copy)]
+pub struct Dummy(());
+
+impl Dummy {
+    #[inline]
+    fn new() -> Self {
+        Self(())
+    }
 }
 
 /// Parent type used in standard AST.

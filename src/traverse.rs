@@ -39,6 +39,12 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
     // Run transformer on the traversable AST
     Traverse::visit_program(transformer, program, &mut ctx);
 
+    // Check no dummy AST nodes left in the AST
+    assert!(
+        ctx.dummy_count() == 0,
+        "Transform left dummy AST nodes in the AST"
+    );
+
     // The context object goes out of scope at this point, which guarantees that no references
     // (either mutable or immutable) to the traversable AST or the context object still exist.
     // If the transformer attempts to hold on to any references to the AST, or to the context object,
@@ -79,7 +85,7 @@ pub trait Traverse<'a> {
             Statement::ExpressionStatement(expr_stmt) => {
                 self.visit_expression_statement(expr_stmt, ctx)
             }
-            Statement::Dummy => unreachable!(),
+            Statement::Dummy(_) => unreachable!(),
         }
     }
 
@@ -117,7 +123,7 @@ pub trait Traverse<'a> {
             Expression::UnaryExpression(unary_expr) => {
                 self.visit_unary_expression(unary_expr, ctx);
             }
-            Expression::Dummy => unreachable!(),
+            Expression::Dummy(_) => unreachable!(),
         }
     }
 

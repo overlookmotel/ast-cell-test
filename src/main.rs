@@ -49,7 +49,7 @@ impl<'a> Traverse<'a> for TransformTypeof {
                     // Swap left and right of binary expression
                     let left = bin_expr.take_left(ctx);
                     let right = bin_expr.replace_right(left, ctx);
-                    bin_expr.replace_left(right, ctx);
+                    bin_expr.set_left(right, ctx);
                 }
             }
         }
