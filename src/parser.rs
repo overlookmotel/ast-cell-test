@@ -6,8 +6,7 @@ use crate::ast::{
 };
 
 /// Create AST for `typeof foo === 'object'`.
-/// Hard-coded here, but these are the steps actual parser would take to create the AST
-/// with "back-links" to parents on each node.
+/// Hard-coded here, but these are the steps actual parser would take to create the AST.
 pub fn parse(alloc: &Allocator) -> &mut Program {
     // `foo`
     let id = Box(alloc.alloc(IdentifierReference {
