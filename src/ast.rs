@@ -730,6 +730,11 @@ impl<'a> GCell<traversable::BinaryExpression<'a>> {
         self.borrow(tk).operator
     }
 
+    /// Convenience method for setting `operator` from a ref.
+    pub fn set_operator(&'a self, operator: BinaryOperator, tk: &mut Token) {
+        self.borrow_mut(tk).operator = operator;
+    }
+
     /// Replace value of `left` field, and return previous value.
     pub fn replace_left(
         &'a self,
@@ -866,6 +871,11 @@ impl<'a> GCell<traversable::UnaryExpression<'a>> {
     /// Convenience method for getting `operator` from a ref.
     pub fn operator(&'a self, tk: &Token) -> UnaryOperator {
         self.borrow(tk).operator
+    }
+
+    /// Convenience method for setting `operator` from a ref.
+    pub fn set_operator(&'a self, operator: UnaryOperator, tk: &mut Token) {
+        self.borrow_mut(tk).operator = operator;
     }
 
     /// Replace value of `argument` field, and return previous value.
