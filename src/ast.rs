@@ -715,18 +715,18 @@ impl<'a> GCell<traversable::BinaryExpression<'a>> {
 
     /// Convenience method for getting `left` from a ref.
     #[inline]
-    pub fn left(&'a self, tk: &mut Token) -> traversable::Expression<'a> {
+    pub fn left(&'a self, tk: &Token) -> traversable::Expression<'a> {
         self.borrow(tk).left
     }
 
     /// Convenience method for getting `right` from a ref.
     #[inline]
-    pub fn right(&'a self, tk: &mut Token) -> traversable::Expression<'a> {
+    pub fn right(&'a self, tk: &Token) -> traversable::Expression<'a> {
         self.borrow(tk).right
     }
 
     /// Convenience method for getting `operator` from a ref.
-    pub fn operator(&'a self, tk: &mut Token) -> BinaryOperator {
+    pub fn operator(&'a self, tk: &Token) -> BinaryOperator {
         self.borrow(tk).operator
     }
 
@@ -859,12 +859,12 @@ impl<'a> GCell<traversable::UnaryExpression<'a>> {
 
     /// Convenience method for getting `argument` from a ref.
     #[inline]
-    pub fn argument(&'a self, tk: &mut Token) -> traversable::Expression<'a> {
+    pub fn argument(&'a self, tk: &Token) -> traversable::Expression<'a> {
         self.borrow(tk).argument
     }
 
     /// Convenience method for getting `operator` from a ref.
-    pub fn operator(&'a self, tk: &mut Token) -> UnaryOperator {
+    pub fn operator(&'a self, tk: &Token) -> UnaryOperator {
         self.borrow(tk).operator
     }
 
