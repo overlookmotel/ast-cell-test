@@ -9,7 +9,6 @@ mod traverse;
 mod visit;
 use ast::{
     traversable::{Expression, Parent, UnaryExpression},
-    traversable_traits::*,
     BinaryOperator, UnaryOperator,
 };
 use cell::{SharedBox, Token};

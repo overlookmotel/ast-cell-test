@@ -4,7 +4,6 @@ use crate::{
             BinaryExpression, ExpressionStatement, IdentifierReference, Parent,
             Program as TraversableProgram, StringLiteral, UnaryExpression,
         },
-        traversable_traits::*,
         Program,
     },
     cell::{SharedBox, Token},
