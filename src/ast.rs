@@ -388,12 +388,11 @@ link_types!(Statement, TraversableStatement);
 
 impl<'a> traversable::Statement<'a> {
     fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
-        use TraversableStatement::*;
         match self {
-            ExpressionStatement(expr_stmt) => {
+            Self::ExpressionStatement(expr_stmt) => {
                 expr_stmt.borrow_mut(tk).parent = parent;
             }
-            Dummy => {}
+            Self::Dummy => {}
         }
     }
 
@@ -523,21 +522,20 @@ link_types!(Expression, TraversableExpression);
 
 impl<'a> traversable::Expression<'a> {
     fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
-        use TraversableExpression::*;
         match self {
-            StringLiteral(expr) => {
+            Self::StringLiteral(expr) => {
                 expr.borrow_mut(tk).parent = parent;
             }
-            Identifier(expr) => {
+            Self::Identifier(expr) => {
                 expr.borrow_mut(tk).parent = parent;
             }
-            BinaryExpression(expr) => {
+            Self::BinaryExpression(expr) => {
                 expr.borrow_mut(tk).parent = parent;
             }
-            UnaryExpression(expr) => {
+            Self::UnaryExpression(expr) => {
                 expr.borrow_mut(tk).parent = parent;
             }
-            Dummy => {}
+            Self::Dummy => {}
         }
     }
 
