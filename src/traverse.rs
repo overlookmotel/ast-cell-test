@@ -1,8 +1,10 @@
 use crate::{
     ast::{
         traversable::{
-            BinaryExpression, Expression, ExpressionStatement, IdentifierReference,
-            Program as TraversableProgram, Statement, StringLiteral, UnaryExpression,
+            BinaryExpression, ComputedMemberExpression, Expression, ExpressionStatement,
+            IdentifierReference, MemberExpression, MemberExpressionRef,
+            Program as TraversableProgram, Statement, StaticMemberExpression, StringLiteral,
+            UnaryExpression,
         },
         Program,
     },
@@ -107,6 +109,9 @@ pub trait Traverse<'a> {
             Expression::UnaryExpression(unary_expr) => {
                 self.visit_unary_expression(unary_expr, tk);
             }
+            Expression::MemberExpression(member_expr) => {
+                self.visit_member_expression(member_expr, tk);
+            }
             Expression::Dummy => unreachable!(),
         }
     }
@@ -153,5 +158,62 @@ pub trait Traverse<'a> {
         tk: &mut Token,
     ) {
         self.visit_expression(unary_expr.argument(tk), tk);
+    }
+
+    fn visit_member_expression(
+        &mut self,
+        member_expr: SharedBox<'a, MemberExpression<'a>>,
+        tk: &mut Token,
+    ) {
+        self.walk_member_expression(member_expr, tk);
+    }
+
+    fn walk_member_expression(
+        &mut self,
+        member_expr: SharedBox<'a, MemberExpression<'a>>,
+        tk: &mut Token,
+    ) {
+        match member_expr.as_payload_ref(tk) {
+            MemberExpressionRef::ComputedMemberExpression(expr) => {
+                self.visit_computed_member_expression(expr, tk);
+            }
+            MemberExpressionRef::StaticMemberExpression(expr) => {
+                self.visit_static_member_expression(expr, tk);
+            }
+            MemberExpressionRef::Dummy => unreachable!(),
+        };
+    }
+
+    fn visit_computed_member_expression(
+        &mut self,
+        expr: SharedBox<'a, ComputedMemberExpression<'a>>,
+        tk: &mut Token,
+    ) {
+        self.walk_computed_member_expression(expr, tk);
+    }
+
+    fn walk_computed_member_expression(
+        &mut self,
+        expr: SharedBox<'a, ComputedMemberExpression<'a>>,
+        tk: &mut Token,
+    ) {
+        self.visit_expression(expr.object(tk), tk);
+        self.visit_expression(expr.expression(tk), tk);
+    }
+
+    fn visit_static_member_expression(
+        &mut self,
+        expr: SharedBox<'a, StaticMemberExpression<'a>>,
+        tk: &mut Token,
+    ) {
+        self.walk_static_member_expression(expr, tk);
+    }
+
+    fn walk_static_member_expression(
+        &mut self,
+        expr: SharedBox<'a, StaticMemberExpression<'a>>,
+        tk: &mut Token,
+    ) {
+        self.visit_expression(expr.object(tk), tk);
     }
 }

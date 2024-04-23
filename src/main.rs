@@ -6,6 +6,7 @@ mod parser;
 mod print;
 mod semantic;
 mod traverse;
+mod util;
 mod visit;
 use ast::{
     traversable::{Expression, Parent, UnaryExpression},
@@ -70,7 +71,10 @@ mod tests {
 
     #[test]
     fn mutate_standard_ast_after_transform() {
-        use ast::{Expression, IdentifierReference, Parent, Statement, StringLiteral};
+        use ast::{
+            Expression, IdentifierReference, MemberExpression, Parent, Statement,
+            StaticMemberExpression, StringLiteral,
+        };
         use oxc_allocator::Box;
         use std::mem;
 
@@ -102,12 +106,21 @@ mod tests {
         };
         unary_expr.operator = UnaryOperator::UnaryNegation;
 
-        let id = if let Expression::Identifier(unary_expr) = &mut unary_expr.argument {
-            &mut **unary_expr
-        } else {
-            unreachable!();
-        };
-        id.name = "bar";
+        let member_expr =
+            if let Expression::MemberExpression(member_expr) = &mut unary_expr.argument {
+                &mut **member_expr
+            } else {
+                unreachable!();
+            };
+        *member_expr = MemberExpression::StaticMemberExpression(StaticMemberExpression {
+            object: Expression::Identifier(Box(alloc.alloc(IdentifierReference {
+                name: "foo",
+                parent: Parent::None,
+            }))),
+            property: "bar",
+            optional: false,
+            parent: Parent::None,
+        });
 
         unary_expr.argument = Expression::StringLiteral(Box(alloc.alloc(StringLiteral {
             value: "foo",

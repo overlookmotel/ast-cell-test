@@ -1,7 +1,8 @@
 use oxc_allocator::Vec;
 
 use crate::ast::{
-    BinaryExpression, Expression, ExpressionStatement, IdentifierReference, Program, Statement,
+    BinaryExpression, ComputedMemberExpression, Expression, ExpressionStatement,
+    IdentifierReference, MemberExpression, Program, Statement, StaticMemberExpression,
     StringLiteral, UnaryExpression,
 };
 
@@ -62,6 +63,9 @@ pub trait Visit<'a> {
             Expression::UnaryExpression(unary_expr) => {
                 self.visit_unary_expression(unary_expr);
             }
+            Expression::MemberExpression(member_expr) => {
+                self.visit_member_expression(member_expr);
+            }
             Expression::Dummy => unreachable!(),
         }
     }
@@ -87,5 +91,38 @@ pub trait Visit<'a> {
 
     fn walk_unary_expression(&mut self, unary_expr: &UnaryExpression<'a>) {
         self.visit_expression(&unary_expr.argument);
+    }
+
+    fn visit_member_expression(&mut self, member_expr: &MemberExpression<'a>) {
+        self.walk_member_expression(member_expr);
+    }
+
+    fn walk_member_expression(&mut self, member_expr: &MemberExpression<'a>) {
+        match member_expr {
+            MemberExpression::ComputedMemberExpression(expr) => {
+                self.visit_computed_member_expression(expr);
+            }
+            MemberExpression::StaticMemberExpression(expr) => {
+                self.visit_static_member_expression(expr);
+            }
+            MemberExpression::Dummy => unreachable!(),
+        }
+    }
+
+    fn visit_computed_member_expression(&mut self, expr: &ComputedMemberExpression<'a>) {
+        self.walk_computed_member_expression(expr);
+    }
+
+    fn walk_computed_member_expression(&mut self, expr: &ComputedMemberExpression<'a>) {
+        self.visit_expression(&expr.object);
+        self.visit_expression(&expr.expression);
+    }
+
+    fn visit_static_member_expression(&mut self, expr: &StaticMemberExpression<'a>) {
+        self.walk_static_member_expression(expr);
+    }
+
+    fn walk_static_member_expression(&mut self, expr: &StaticMemberExpression<'a>) {
+        self.visit_expression(&expr.object);
     }
 }

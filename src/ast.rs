@@ -140,7 +140,10 @@ use std::mem;
 
 use oxc_allocator::{Allocator, Box, Vec};
 
-use crate::cell::{GCell, SharedBox, SharedVec, Token};
+use crate::{
+    cell::{GCell, SharedBox, SharedVec, Token},
+    util::max_all,
+};
 
 /// Module namespace for traversable AST node types
 #[allow(unused_imports)]
@@ -148,12 +151,16 @@ pub mod traversable {
     pub use super::Orphan;
     pub use super::TraversableAstBuilder as AstBuilder;
     pub use super::TraversableBinaryExpression as BinaryExpression;
+    pub use super::TraversableComputedMemberExpression as ComputedMemberExpression;
     pub use super::TraversableExpression as Expression;
     pub use super::TraversableExpressionStatement as ExpressionStatement;
     pub use super::TraversableIdentifierReference as IdentifierReference;
+    pub use super::TraversableMemberExpression as MemberExpression;
+    pub use super::TraversableMemberExpressionRef as MemberExpressionRef;
     pub use super::TraversableParent as Parent;
     pub use super::TraversableProgram as Program;
     pub use super::TraversableStatement as Statement;
+    pub use super::TraversableStaticMemberExpression as StaticMemberExpression;
     pub use super::TraversableStringLiteral as StringLiteral;
     pub use super::TraversableUnaryExpression as UnaryExpression;
 }
@@ -505,6 +512,7 @@ pub enum Expression<'a> {
     Identifier(Box<'a, IdentifierReference<'a>>) = 2,
     BinaryExpression(Box<'a, BinaryExpression<'a>>) = 3,
     UnaryExpression(Box<'a, UnaryExpression<'a>>) = 4,
+    MemberExpression(Box<'a, MemberExpression<'a>>) = 5,
 }
 
 // NB: `Copy` because it's only 16 bytes
@@ -516,6 +524,7 @@ pub enum TraversableExpression<'a> {
     Identifier(SharedBox<'a, traversable::IdentifierReference<'a>>) = 2,
     BinaryExpression(SharedBox<'a, traversable::BinaryExpression<'a>>) = 3,
     UnaryExpression(SharedBox<'a, traversable::UnaryExpression<'a>>) = 4,
+    MemberExpression(SharedBox<'a, traversable::MemberExpression<'a>>) = 5,
 }
 
 link_types!(Expression, TraversableExpression);
@@ -534,6 +543,9 @@ impl<'a> traversable::Expression<'a> {
             }
             Self::UnaryExpression(expr) => {
                 expr.borrow_mut(tk).parent = parent;
+            }
+            Self::MemberExpression(expr) => {
+                expr.set_parent(parent, tk);
             }
             Self::Dummy => {}
         }
@@ -928,6 +940,468 @@ pub enum UnaryOperator {
     Delete = 6,
 }
 
+#[derive(Debug)]
+#[repr(C, u8)]
+pub enum MemberExpression<'a> {
+    Dummy = 0,
+    ComputedMemberExpression(ComputedMemberExpression<'a>) = 1,
+    StaticMemberExpression(StaticMemberExpression<'a>) = 2,
+    // PrivateFieldExpression(PrivateFieldExpression<'a>) = 3, // Skipped for now
+}
+
+// NB: Not `Copy` because it contains data inline in variants, not boxed
+#[repr(C, u8)]
+pub enum TraversableMemberExpression<'a> {
+    Dummy = 0,
+    ComputedMemberExpression(GCell<traversable::ComputedMemberExpression<'a>>) = 1,
+    StaticMemberExpression(GCell<traversable::StaticMemberExpression<'a>>) = 2,
+    // PrivateFieldExpression(GCell<traversable::PrivateFieldExpression<'a>>) = 3,
+}
+
+// NB: `Copy` because it's only 16 bytes
+#[derive(Clone, Copy)]
+#[repr(C, u8)]
+pub enum TraversableMemberExpressionRef<'a> {
+    Dummy = 0,
+    ComputedMemberExpression(SharedBox<'a, traversable::ComputedMemberExpression<'a>>) = 1,
+    StaticMemberExpression(SharedBox<'a, traversable::StaticMemberExpression<'a>>) = 2,
+    // PrivateFieldExpression(SharedBox<'a, traversable::PrivateFieldExpression<'a>>) = 3,
+}
+
+link_types!(MemberExpression, TraversableMemberExpression);
+
+// TODO: Are these methods useful? Maybe can delete this impl.
+impl<'a> traversable::MemberExpression<'a> {
+    fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
+        match self {
+            Self::ComputedMemberExpression(expr) => {
+                expr.borrow_mut(tk).parent = parent;
+            }
+            Self::StaticMemberExpression(expr) => {
+                expr.borrow_mut(tk).parent = parent;
+            }
+            Self::Dummy => {}
+        }
+    }
+
+    fn remove_parent(&self, tk: &mut Token) {
+        self.set_parent(traversable::Parent::None, tk);
+    }
+}
+
+impl<'a> GCell<traversable::MemberExpression<'a>> {
+    /// Convert `SharedBox<traversable::MemberExpression>` to `traversable::MemberExpressionRef`.
+    /// i.e. convert `SharedBox` containing enum of *unboxed* variants
+    /// into *unboxed* enum containing `SharedBox` variants.
+    /// Compiler should boil this down to a no-op.
+    #[inline]
+    pub fn as_payload_ref(&self, tk: &Token) -> traversable::MemberExpressionRef<'a> {
+        enum NodeType {
+            ComputedMemberExpression,
+            StaticMemberExpression,
+            Dummy,
+        }
+
+        // We can't borrow contents of this cell and then get a reference to its contents,
+        // because then `tk` would remain borrowed.
+        // So instead get the type via a temporary borrow, and then exchange the reference to the enum
+        // cell for a reference to the payload
+        let node_type = match self.borrow(tk) {
+            traversable::MemberExpression::ComputedMemberExpression(_) => {
+                NodeType::ComputedMemberExpression
+            }
+            traversable::MemberExpression::StaticMemberExpression(_) => {
+                NodeType::StaticMemberExpression
+            }
+            traversable::MemberExpression::Dummy => NodeType::Dummy,
+        };
+
+        // In a `repr(C)` enum, the payload for all variants is stored at offset equal to
+        // max alignment of any variant
+        const PAYLOAD_OFFSET: usize = max_all(&[
+            std::mem::align_of::<traversable::ComputedMemberExpression>(),
+            std::mem::align_of::<traversable::StaticMemberExpression>(),
+        ]);
+
+        // SAFETY: Is this safe?
+        // I think the conversion itself is, but what if the enum is mutated into another variant,
+        // so then the memory location which pointer points to contains the wrong type?
+        unsafe {
+            let payload_ptr = (self as *const _ as *const u8).add(PAYLOAD_OFFSET);
+            match node_type {
+                NodeType::ComputedMemberExpression => {
+                    traversable::MemberExpressionRef::ComputedMemberExpression(
+                        &*(payload_ptr as *const GCell<traversable::ComputedMemberExpression>),
+                    )
+                }
+                NodeType::StaticMemberExpression => {
+                    traversable::MemberExpressionRef::StaticMemberExpression(
+                        &*(payload_ptr as *const GCell<traversable::StaticMemberExpression>),
+                    )
+                }
+                NodeType::Dummy => traversable::MemberExpressionRef::Dummy,
+            }
+        }
+    }
+
+    fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
+        type Ref<'b> = traversable::MemberExpressionRef<'b>;
+        match self.as_payload_ref(tk) {
+            Ref::ComputedMemberExpression(expr) => {
+                expr.borrow_mut(tk).parent = parent;
+            }
+            Ref::StaticMemberExpression(expr) => {
+                expr.borrow_mut(tk).parent = parent;
+            }
+            Ref::Dummy => {}
+        }
+    }
+
+    fn remove_parent(&self, tk: &mut Token) {
+        self.set_parent(traversable::Parent::None, tk);
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct ComputedMemberExpression<'a> {
+    pub parent: Parent<'a>,
+    pub object: Expression<'a>,
+    pub expression: Expression<'a>,
+    pub optional: bool, // for optional chaining
+}
+
+#[repr(C)]
+pub struct TraversableComputedMemberExpression<'a> {
+    parent: TraversableParent<'a>,
+    object: TraversableExpression<'a>,
+    expression: TraversableExpression<'a>,
+    pub optional: bool, // for optional chaining
+}
+
+link_types!(
+    ComputedMemberExpression,
+    TraversableComputedMemberExpression
+);
+
+impl<'a> traversable::ComputedMemberExpression<'a> {
+    pub fn new_expr_in(
+        object: Orphan<traversable::Expression<'a>>,
+        expression: Orphan<traversable::Expression<'a>>,
+        optional: bool,
+        alloc: &'a Allocator,
+        tk: &mut Token,
+    ) -> Orphan<traversable::Expression<'a>> {
+        let object = object.inner();
+        let expression = expression.inner();
+        let expr = GCell::new(Self {
+            object,
+            expression,
+            optional,
+            parent: traversable::Parent::None,
+        });
+        let member_expr = alloc.galloc(traversable::MemberExpression::ComputedMemberExpression(
+            expr,
+        ));
+        let expr = if let traversable::MemberExpressionRef::ComputedMemberExpression(expr) =
+            member_expr.as_payload_ref(tk)
+        {
+            expr
+        } else {
+            unreachable!();
+        };
+        // TODO: As it stands, I believe this is unsound.
+        // We're saving a reference to the payload of an enum for later use,
+        // but there is nothing to prevent that enum being mutated and the its variant changed,
+        // in which case this reference which is meant to be to a `ComputedMemberExpression`
+        // instead points at a `StaticMemberExpression`. That is definitely UB.
+        // But to mutate the enum, you'd need to go through one of the methods in this module.
+        // Could that method clone the `ComputedMemberExpression` to move it to a new memory location
+        // and then update the parent links of it's children?
+        object.set_parent(
+            traversable::Parent::ComputedMemberExpressionObject(expr),
+            tk,
+        );
+        expression.set_parent(
+            traversable::Parent::ComputedMemberExpressionExpression(expr),
+            tk,
+        );
+        // SAFETY: Node is newly created so by definition is not yet attached to AST
+        unsafe { Orphan::new(traversable::Expression::MemberExpression(member_expr)) }
+    }
+
+    pub fn object(&self) -> traversable::Expression<'a> {
+        self.object
+    }
+
+    pub fn expression(&self) -> traversable::Expression<'a> {
+        self.expression
+    }
+
+    pub fn parent(self) -> traversable::Parent<'a> {
+        self.parent
+    }
+
+    // SAFETY: Caller must ensure parent is set correctly to track whether node is
+    // currently attached to AST or not. See doc comment at top of file.
+    pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
+        self.parent = parent;
+    }
+}
+
+impl<'a> GCell<traversable::ComputedMemberExpression<'a>> {
+    /// Convenience method for getting `parent` from a ref.
+    pub fn parent(&'a self, tk: &Token) -> traversable::Parent<'a> {
+        self.borrow(tk).parent
+    }
+
+    /// Convenience method for getting `object` from a ref.
+    #[inline]
+    pub fn object(&'a self, tk: &Token) -> traversable::Expression<'a> {
+        self.borrow(tk).object
+    }
+
+    /// Convenience method for getting `expression` from a ref.
+    #[inline]
+    pub fn expression(&'a self, tk: &Token) -> traversable::Expression<'a> {
+        self.borrow(tk).expression
+    }
+
+    /// Convenience method for getting `optional` from a ref.
+    pub fn optional(&'a self, tk: &Token) -> bool {
+        self.borrow(tk).optional
+    }
+
+    /// Convenience method for setting `optional` from a ref.
+    pub fn set_optional(&'a self, optional: bool, tk: &mut Token) {
+        self.borrow_mut(tk).optional = optional;
+    }
+
+    /// Replace value of `object` field, and return previous value.
+    pub fn replace_object(
+        &'a self,
+        expr: Orphan<traversable::Expression<'a>>,
+        tk: &mut Token,
+    ) -> Orphan<traversable::Expression<'a>> {
+        let old_object = self.object(tk);
+        old_object.remove_parent(tk);
+        expr.set_parent(
+            traversable::Parent::ComputedMemberExpressionObject(self),
+            tk,
+        );
+        self.borrow_mut(tk).object = expr.inner();
+        // SAFETY: We have removed `old_left` from the AST
+        unsafe { Orphan::new(old_object) }
+    }
+
+    /// Replace value of `expression` field, and return previous value.
+    pub fn replace_expression(
+        &'a self,
+        expr: Orphan<traversable::Expression<'a>>,
+        tk: &mut Token,
+    ) -> Orphan<traversable::Expression<'a>> {
+        let old_expression = self.expression(tk);
+        old_expression.remove_parent(tk);
+        expr.set_parent(
+            traversable::Parent::ComputedMemberExpressionExpression(self),
+            tk,
+        );
+        self.borrow_mut(tk).expression = expr.inner();
+        // SAFETY: We have removed `old_right` from the AST
+        unsafe { Orphan::new(old_expression) }
+    }
+
+    /// Extract value of `object` field, and replace with a dummy expression.
+    pub fn take_object(&'a self, tk: &mut Token) -> Orphan<traversable::Expression<'a>> {
+        let expr = mem::replace(
+            &mut self.borrow_mut(tk).object,
+            traversable::Expression::Dummy,
+        );
+        expr.remove_parent(tk);
+        // SAFETY: We have removed `expr` from the AST
+        unsafe { Orphan::new(expr) }
+    }
+
+    /// Extract value of `right` field, and replace with a dummy expression.
+    pub fn take_expression(&'a self, tk: &mut Token) -> Orphan<traversable::Expression<'a>> {
+        let expr = mem::replace(
+            &mut self.borrow_mut(tk).expression,
+            traversable::Expression::Dummy,
+        );
+        expr.remove_parent(tk);
+        // SAFETY: We have removed `expr` from the AST
+        unsafe { Orphan::new(expr) }
+    }
+}
+
+impl<'a> TraversableAstBuilder<'a> {
+    #[inline]
+    pub fn computed_member_expression(
+        &self,
+        object: Orphan<traversable::Expression<'a>>,
+        expression: Orphan<traversable::Expression<'a>>,
+        optional: bool,
+        tk: &mut Token,
+    ) -> Orphan<traversable::Expression<'a>> {
+        traversable::ComputedMemberExpression::new_expr_in(
+            object,
+            expression,
+            optional,
+            self.allocator,
+            tk,
+        )
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct StaticMemberExpression<'a> {
+    pub parent: Parent<'a>,
+    pub object: Expression<'a>,
+    pub property: &'a str,
+    pub optional: bool, // for optional chaining
+}
+
+#[repr(C)]
+pub struct TraversableStaticMemberExpression<'a> {
+    parent: TraversableParent<'a>,
+    object: TraversableExpression<'a>,
+    pub property: &'a str,
+    pub optional: bool, // for optional chaining
+}
+
+link_types!(StaticMemberExpression, TraversableStaticMemberExpression);
+
+impl<'a> traversable::StaticMemberExpression<'a> {
+    pub fn new_expr_in(
+        object: Orphan<traversable::Expression<'a>>,
+        property: &'a str,
+        optional: bool,
+        alloc: &'a Allocator,
+        tk: &mut Token,
+    ) -> Orphan<traversable::Expression<'a>> {
+        let object = object.inner();
+        let expr = GCell::new(Self {
+            object,
+            property,
+            optional,
+            parent: traversable::Parent::None,
+        });
+        let member_expr = alloc.galloc(traversable::MemberExpression::StaticMemberExpression(expr));
+        let expr = if let traversable::MemberExpressionRef::StaticMemberExpression(expr) =
+            member_expr.as_payload_ref(tk)
+        {
+            expr
+        } else {
+            unreachable!();
+        };
+        // TODO: As it stands, I believe this is unsound.
+        // We're saving a reference to the payload of an enum for later use,
+        // but there is nothing to prevent that enum being mutated and the its variant changed,
+        // in which case this reference which is meant to be to a `ComputedMemberExpression`
+        // instead points at a `StaticMemberExpression`. That is definitely UB.
+        // But to mutate the enum, you'd need to go through one of the methods in this module.
+        // Could that method clone the `ComputedMemberExpression` to move it to a new memory location
+        // and then update the parent links of it's children?
+        object.set_parent(traversable::Parent::StaticMemberExpressionObject(expr), tk);
+        // SAFETY: Node is newly created so by definition is not yet attached to AST
+        unsafe { Orphan::new(traversable::Expression::MemberExpression(member_expr)) }
+    }
+
+    pub fn object(&self) -> traversable::Expression<'a> {
+        self.object
+    }
+
+    pub fn parent(self) -> traversable::Parent<'a> {
+        self.parent
+    }
+
+    // SAFETY: Caller must ensure parent is set correctly to track whether node is
+    // currently attached to AST or not. See doc comment at top of file.
+    pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
+        self.parent = parent;
+    }
+}
+
+impl<'a> GCell<traversable::StaticMemberExpression<'a>> {
+    /// Convenience method for getting `parent` from a ref.
+    pub fn parent(&'a self, tk: &Token) -> traversable::Parent<'a> {
+        self.borrow(tk).parent
+    }
+
+    /// Convenience method for getting `object` from a ref.
+    #[inline]
+    pub fn object(&'a self, tk: &Token) -> traversable::Expression<'a> {
+        self.borrow(tk).object
+    }
+
+    /// Convenience method for getting `property` from a ref.
+    #[inline]
+    pub fn property(&'a self, tk: &Token) -> &'a str {
+        self.borrow(tk).property
+    }
+
+    /// Convenience method for getting `optional` from a ref.
+    pub fn optional(&'a self, tk: &Token) -> bool {
+        self.borrow(tk).optional
+    }
+
+    /// Convenience method for setting `property` from a ref.
+    #[inline]
+    pub fn set_property(&'a self, property: &'a str, tk: &mut Token) {
+        self.borrow_mut(tk).property = property;
+    }
+
+    /// Convenience method for setting `optional` from a ref.
+    pub fn set_optional(&'a self, optional: bool, tk: &mut Token) {
+        self.borrow_mut(tk).optional = optional;
+    }
+
+    /// Replace value of `object` field, and return previous value.
+    pub fn replace_object(
+        &'a self,
+        expr: Orphan<traversable::Expression<'a>>,
+        tk: &mut Token,
+    ) -> Orphan<traversable::Expression<'a>> {
+        let old_object = self.object(tk);
+        old_object.remove_parent(tk);
+        expr.set_parent(traversable::Parent::StaticMemberExpressionObject(self), tk);
+        self.borrow_mut(tk).object = expr.inner();
+        // SAFETY: We have removed `old_left` from the AST
+        unsafe { Orphan::new(old_object) }
+    }
+
+    /// Extract value of `object` field, and replace with a dummy expression.
+    pub fn take_object(&'a self, tk: &mut Token) -> Orphan<traversable::Expression<'a>> {
+        let expr = mem::replace(
+            &mut self.borrow_mut(tk).object,
+            traversable::Expression::Dummy,
+        );
+        expr.remove_parent(tk);
+        // SAFETY: We have removed `expr` from the AST
+        unsafe { Orphan::new(expr) }
+    }
+}
+
+impl<'a> TraversableAstBuilder<'a> {
+    #[inline]
+    pub fn static_member_expression(
+        &self,
+        object: Orphan<traversable::Expression<'a>>,
+        property: &'a str,
+        optional: bool,
+        tk: &mut Token,
+    ) -> Orphan<traversable::Expression<'a>> {
+        traversable::StaticMemberExpression::new_expr_in(
+            object,
+            property,
+            optional,
+            self.allocator,
+            tk,
+        )
+    }
+}
+
 /// Parent type used in standard AST.
 ///
 /// Encodes both the type of the parent, and child's location in the parent.
@@ -955,6 +1429,9 @@ pub enum Parent<'a> {
     BinaryExpressionLeft(ParentPointer<BinaryExpression<'a>>) = 3,
     BinaryExpressionRight(ParentPointer<BinaryExpression<'a>>) = 4,
     UnaryExpressionArgument(ParentPointer<UnaryExpression<'a>>) = 5,
+    ComputedMemberExpressionObject(ParentPointer<ComputedMemberExpression<'a>>) = 6,
+    ComputedMemberExpressionExpression(ParentPointer<ComputedMemberExpression<'a>>) = 7,
+    StaticMemberExpressionObject(ParentPointer<StaticMemberExpression<'a>>) = 8,
 }
 
 /// Wrapper around pointer to parent.
@@ -979,6 +1456,10 @@ pub enum TraversableParent<'a> {
     BinaryExpressionLeft(SharedBox<'a, traversable::BinaryExpression<'a>>) = 3,
     BinaryExpressionRight(SharedBox<'a, traversable::BinaryExpression<'a>>) = 4,
     UnaryExpressionArgument(SharedBox<'a, traversable::UnaryExpression<'a>>) = 5,
+    ComputedMemberExpressionObject(SharedBox<'a, traversable::ComputedMemberExpression<'a>>) = 6,
+    ComputedMemberExpressionExpression(SharedBox<'a, traversable::ComputedMemberExpression<'a>>) =
+        7,
+    StaticMemberExpressionObject(SharedBox<'a, traversable::StaticMemberExpression<'a>>) = 8,
 }
 
 link_types!(Parent, TraversableParent);

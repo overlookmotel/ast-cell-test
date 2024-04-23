@@ -1,8 +1,9 @@
 use crate::{
     ast::{
         traversable::{
-            BinaryExpression, ExpressionStatement, IdentifierReference, Parent,
-            Program as TraversableProgram, StringLiteral, UnaryExpression,
+            BinaryExpression, ComputedMemberExpression, ExpressionStatement, IdentifierReference,
+            Parent, Program as TraversableProgram, StaticMemberExpression, StringLiteral,
+            UnaryExpression,
         },
         Program,
     },
@@ -81,5 +82,31 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         unsafe { unary_expr_mut.set_parent(self.current_parent) };
         self.current_parent = Parent::UnaryExpressionArgument(unary_expr);
         self.walk_unary_expression(unary_expr, tk);
+    }
+
+    fn visit_computed_member_expression(
+        &mut self,
+        expr: SharedBox<'a, ComputedMemberExpression<'a>>,
+        tk: &mut Token,
+    ) {
+        let expr_mut = expr.borrow_mut(tk);
+        // SAFETY: We are here establishing the invariant of correct parent tracking
+        unsafe { expr_mut.set_parent(self.current_parent) };
+        self.current_parent = Parent::ComputedMemberExpressionObject(expr);
+        self.visit_expression(expr.object(tk), tk);
+        self.current_parent = Parent::ComputedMemberExpressionExpression(expr);
+        self.visit_expression(expr.expression(tk), tk);
+    }
+
+    fn visit_static_member_expression(
+        &mut self,
+        expr: SharedBox<'a, StaticMemberExpression<'a>>,
+        tk: &mut Token,
+    ) {
+        let expr_mut = expr.borrow_mut(tk);
+        // SAFETY: We are here establishing the invariant of correct parent tracking
+        unsafe { expr_mut.set_parent(self.current_parent) };
+        self.current_parent = Parent::StaticMemberExpressionObject(expr);
+        self.visit_expression(expr.object(tk), tk);
     }
 }

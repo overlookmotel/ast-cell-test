@@ -1,7 +1,8 @@
 use crate::{
     ast::{
-        BinaryExpression, BinaryOperator, ExpressionStatement, IdentifierReference, Program,
-        StringLiteral, UnaryExpression, UnaryOperator,
+        BinaryExpression, BinaryOperator, ComputedMemberExpression, ExpressionStatement,
+        IdentifierReference, Program, StaticMemberExpression, StringLiteral, UnaryExpression,
+        UnaryOperator,
     },
     Visit,
 };
@@ -64,5 +65,25 @@ impl<'a> Visit<'a> for Printer {
             }
         ));
         self.visit_expression(&bin_expr.right);
+    }
+
+    fn visit_computed_member_expression(&mut self, expr: &ComputedMemberExpression<'a>) {
+        self.visit_expression(&expr.object);
+        if expr.optional {
+            self.output("?.");
+        }
+        self.output("[");
+        self.visit_expression(&expr.expression);
+        self.output("]");
+    }
+
+    fn visit_static_member_expression(&mut self, expr: &StaticMemberExpression<'a>) {
+        self.visit_expression(&expr.object);
+        if expr.optional {
+            self.output("?.");
+        } else {
+            self.output(".");
+        }
+        self.output(expr.property);
     }
 }
