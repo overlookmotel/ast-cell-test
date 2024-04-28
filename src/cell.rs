@@ -18,9 +18,19 @@
 use std::cell::UnsafeCell;
 
 /// Context object for traversing AST.
+///
+/// This object has 2 purposes:
+/// 1. Acts as a token to guarantee user cannot obtain aliasing pointers to AST nodes.
+/// 2. Contains a counter for number of dummy AST nodes in the AST.
+///
+/// When transform is complete, there must be 0 dummy nodes in the AST.
+/// This allows the AST to be used as a "standard" AST again. The standard AST does not contain `Dummy`
+/// enum variants, so it would be UB to allow such variants to exist. They can only exist temporarily
+/// in the traversable AST.
+/// `transform` checks the dummy count at end of traverse, and panics if it's non-zero.
 #[repr(transparent)]
 pub struct TraverseCtx {
-    _dummy: (),
+    dummy_count: usize,
 }
 
 impl TraverseCtx {
@@ -44,7 +54,23 @@ impl TraverseCtx {
     /// Caller must ensure only a single context object is used with any AST at one time.
     #[inline]
     pub unsafe fn new_unchecked() -> Self {
-        Self { _dummy: () }
+        Self { dummy_count: 0 }
+    }
+
+    pub fn dummy_count(&self) -> usize {
+        self.dummy_count
+    }
+
+    #[inline]
+    pub fn increment_dummy_count(&mut self) {
+        self.dummy_count += 1;
+    }
+
+    // SAFETY: Caller must ensure that a dummy AST node is actually being removed from AST.
+    // This is essential for the soundness of treating the AST as a "standard" AST again after traversal.
+    #[inline]
+    pub unsafe fn decrement_dummy_count(&mut self) {
+        self.dummy_count -= 1;
     }
 }
 

@@ -136,6 +136,37 @@
 // NB: *Cannot* mut borrow `parent` at same time, as cycles in AST are possible, so e.g. `left`
 // and `parent` could point to the same node.
 
+// TODO: There is a problem with the dummy counter.
+// It's sound, but some operations are made impossible.
+// e.g. If you replace `typeof x` with `x`, you `take_argument` to get `x` which increments dummy count,
+// then `replace_*` the location `typeof x` was in with `x`, which doesn't affect dummy count,
+// and the old `UnaryExpression` `typeof <dummy>` is discarded.
+// So we now have a valid AST containing no dummies, but dummy count is 1, which will cause a panic
+// at end of transform.
+// One solution would be to add a method `Orphan::discard` which traverses the node being discarded,
+// and decrements the dummy count by the number of dummies it contains. But this would be expensive
+// if the discarded tree is deep.
+// Or a function to consume an `Orphan<T>` and get all its child nodes as `Orphan`s. If any of children
+// are dummies, that would decrement dummy count.
+
+// TODO: Enforce that no dummy AST nodes left in AST via static means.
+// Only way I can see to do this is to turn `TransformCtx` into a little state machine.
+// * `TransformCtx` becomes `TransformCtx<const DUMMY_COUNT: usize>`.
+// * `visit_*` functions receive an owned `TransformCtx<const DUMMY_COUNT = 0>`.
+// * `visit_*` functions have to return a `TransformCtx<const DUMMY_COUNT = 0>`.
+// * `take_*` consumes `ctx` and returns new `TransformCtx` with count incremented.
+//   `fn take_foo(&self, ctx: TraverseCtx<N>) -> (Orphan<Foo>, TraverseCtx<N+1>)`
+// * `replace_*` consumes `ctx` returns new `TransformCtx` with count decremented.
+//   `fn replace_foo(&self, foo: Orphan<Foo>, ctx: TraverseCtx<N>) -> (Orphan<Foo>, TraverseCtx<N-1>)`
+// Therefore, each `visit_*` function cannot leave any dummies in AST when it exits, or when it calls `walk_*`.
+// This would require preventing dummy nodes being taken from AST with `take_*` or inserted with `replace_*`,
+// so that updated `TransformCtx` returned by these functions has static dummy count at type level.
+// It would be tricky to implement `Orphan::discard` (see above) with this scheme.
+
+// TODO: If provided `swap_*` methods, could we get rid of dummies entirely?
+// `swap_expression` would take 2 `SharedBox<Expression>`s and swap their contents.
+// Then there are never any dummies in the AST, and AST is valid at all times.
+
 use std::mem;
 
 use oxc_allocator::{Allocator, Box, Vec};
@@ -291,7 +322,11 @@ impl<'a> GCell<traversable::Program<'a>> {
         stmt: Orphan<traversable::Statement<'a>>,
         ctx: &mut TraverseCtx,
     ) -> Orphan<traversable::Statement<'a>> {
-        stmt.set_parent(traversable::Parent::ProgramBody(self), ctx);
+        let stmt = stmt.inner();
+        match stmt {
+            traversable::Statement::Dummy => ctx.increment_dummy_count(),
+            _ => stmt.set_parent(traversable::Parent::ProgramBody(self), ctx),
+        }
 
         // Unsafe code here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
         // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
@@ -305,7 +340,11 @@ impl<'a> GCell<traversable::Program<'a>> {
         // ```
         // let old_stmt = std::mem::replace(&mut self.borrow_mut(ctx).body[index], GCell::new(stmt.inner()))
         // let old_stmt = *old_stmt.borrow(ctx);
-        // old_stmt.remove_parent(ctx);
+        // match old_stmt {
+        //   // SAFETY: Dummy count is only decremented if node being removed from AST is a dummy
+        //   traversable::Statement::Dummy => unsafe { ctx.decrement_dummy_count() },
+        //   _ => old_stmt.remove_parent(ctx),
+        // }
         // return unsafe { Orphan::new(old_stmt) };
         // ```
         // i.e. we replace the cell itself, rather than the *contents* of the cell.
@@ -313,9 +352,12 @@ impl<'a> GCell<traversable::Program<'a>> {
         assert!(index < self.borrow(ctx).body.len());
         // SAFETY: We checked `index` is in bounds.
         let item = unsafe { &*self.borrow(ctx).body.as_ptr().add(index) };
-        let old_stmt = item.replace(stmt.inner(), ctx);
-        old_stmt.remove_parent(ctx);
-
+        let old_stmt = item.replace(stmt, ctx);
+        match old_stmt {
+            // SAFETY: Dummy count is only decremented if node being removed from AST is a dummy
+            traversable::Statement::Dummy => unsafe { ctx.decrement_dummy_count() },
+            _ => old_stmt.remove_parent(ctx),
+        }
         // SAFETY: We have removed `old_stmt` from the AST
         unsafe { Orphan::new(old_stmt) }
     }
@@ -336,7 +378,10 @@ impl<'a> GCell<traversable::Program<'a>> {
         //   GCell::new(traversable::Statement::Dummy)
         // );
         // let stmt = *stmt.borrow(ctx);
-        // stmt.remove_parent(ctx);
+        // if !matches!(stmt, traversable::Statement::Dummy) {
+        //   stmt.remove_parent(ctx);
+        //   ctx.increment_dummy_count();
+        // }
         // return unsafe { Orphan::new(old_stmt) };
         // ```
         // TODO: Make `Vec` impl `IndexMut` and replace this dodgy unsafe code with the above.
@@ -344,7 +389,10 @@ impl<'a> GCell<traversable::Program<'a>> {
         // SAFETY: We checked `index` is in bounds.
         let item = unsafe { &*self.borrow(ctx).body.as_ptr().add(index) };
         let stmt = item.replace(traversable::Statement::Dummy, ctx);
-        stmt.remove_parent(ctx);
+        if !matches!(stmt, traversable::Statement::Dummy) {
+            stmt.remove_parent(ctx);
+            ctx.increment_dummy_count();
+        }
         // SAFETY: We have removed `stmt` from the AST
         unsafe { Orphan::new(stmt) }
     }
@@ -354,8 +402,12 @@ impl<'a> GCell<traversable::Program<'a>> {
         stmt: Orphan<traversable::Statement<'a>>,
         ctx: &mut TraverseCtx,
     ) {
-        stmt.set_parent(traversable::Parent::ProgramBody(self), ctx);
-        self.borrow_mut(ctx).body.push(GCell::new(stmt.inner()));
+        let stmt = stmt.inner();
+        match stmt {
+            traversable::Statement::Dummy => ctx.increment_dummy_count(),
+            _ => stmt.set_parent(traversable::Parent::ProgramBody(self), ctx),
+        }
+        self.borrow_mut(ctx).body.push(GCell::new(stmt));
     }
 }
 
@@ -370,18 +422,9 @@ pub enum Statement<'a> {
 // A valid AST should not contain any dummy nodes when transformation is complete, but it's required
 // to have this placeholder so you can remove a node from the AST in order to insert it somewhere else
 // instead. It's expected you'll replace the placeholder again with some other node.
-// Failure to do so will not lead to memory unsafety or UB, but it's not a valid AST and other tools
-// should probably panic if they find one.
 //
-// I cannot see any way to statically prevent this. `take_*` methods could return a marker type which
-// panics in it's `Drop` impl. When inserting a node back into same place in the AST again, this marker
-// type would be consumed without dropping it. If nothing is reinserted, the marker type will get dropped
-// at end of the function where it was created, and will panic.
-// But that is a runtime panic, not const time, so while it's probably better to trigger the panic early,
-// during the transform, as you'll be able to see where the mistake is, it's still not ideal.
-// Rust should not include the pannicking `drop` function in output if it can prove it won't be called.
-// But in any function which can panic, it will have to include it as `drop` gets called during unwinding.
-// This is probably not solveable.
+// Failure to do so will lead to a panic at end of the transform process, to prevent the AST being
+// used as a "standard" AST again, which would be UB as the `Dummy` variants don't exist in standard AST.
 
 // NB: `Copy` because it's only 16 bytes
 #[derive(Clone, Copy)]
@@ -431,6 +474,8 @@ impl<'a> traversable::ExpressionStatement<'a> {
         ctx: &mut TraverseCtx,
     ) -> Orphan<traversable::Statement<'a>> {
         let expression = expression.inner();
+        // We can't allow a dummy to sneak into AST this way without incrementing dummy count
+        assert!(!matches!(expression, traversable::Expression::Dummy));
         let stmt = alloc.galloc(Self {
             expression,
             parent: traversable::Parent::None,
@@ -477,12 +522,20 @@ impl<'a> GCell<traversable::ExpressionStatement<'a>> {
         ctx: &mut TraverseCtx,
     ) -> Orphan<traversable::Expression<'a>> {
         let old_expression = self.expression(ctx);
-        old_expression.remove_parent(ctx);
-        expr.set_parent(
-            traversable::Parent::ExpressionStatementExpression(self),
-            ctx,
-        );
-        self.borrow_mut(ctx).expression = expr.inner();
+        match old_expression {
+            // SAFETY: Dummy count is only decremented if node being removed from AST is a dummy
+            traversable::Expression::Dummy => unsafe { ctx.decrement_dummy_count() },
+            _ => old_expression.remove_parent(ctx),
+        }
+        let expr = expr.inner();
+        match expr {
+            traversable::Expression::Dummy => ctx.increment_dummy_count(),
+            _ => expr.set_parent(
+                traversable::Parent::ExpressionStatementExpression(self),
+                ctx,
+            ),
+        }
+        self.borrow_mut(ctx).expression = expr;
         // SAFETY: We have removed `old_expression` from the AST
         unsafe { Orphan::new(old_expression) }
     }
@@ -493,7 +546,10 @@ impl<'a> GCell<traversable::ExpressionStatement<'a>> {
             &mut self.borrow_mut(ctx).expression,
             traversable::Expression::Dummy,
         );
-        expr.remove_parent(ctx);
+        if !matches!(expr, traversable::Expression::Dummy) {
+            expr.remove_parent(ctx);
+            ctx.increment_dummy_count();
+        }
         // SAFETY: We have removed `expr` from the AST
         unsafe { Orphan::new(expr) }
     }
@@ -689,6 +745,9 @@ impl<'a> traversable::BinaryExpression<'a> {
     ) -> Orphan<traversable::Expression<'a>> {
         let left = left.inner();
         let right = right.inner();
+        // We can't allow a dummy to sneak into AST this way without incrementing dummy count
+        assert!(!matches!(left, traversable::Expression::Dummy));
+        assert!(!matches!(right, traversable::Expression::Dummy));
         let expr = alloc.galloc(Self {
             left,
             operator,
@@ -755,9 +814,17 @@ impl<'a> GCell<traversable::BinaryExpression<'a>> {
         ctx: &mut TraverseCtx,
     ) -> Orphan<traversable::Expression<'a>> {
         let old_left = self.left(ctx);
-        old_left.remove_parent(ctx);
-        expr.set_parent(traversable::Parent::BinaryExpressionLeft(self), ctx);
-        self.borrow_mut(ctx).left = expr.inner();
+        match old_left {
+            // SAFETY: Dummy count is only decremented if node being removed from AST is a dummy
+            traversable::Expression::Dummy => unsafe { ctx.decrement_dummy_count() },
+            _ => old_left.remove_parent(ctx),
+        }
+        let expr = expr.inner();
+        match expr {
+            traversable::Expression::Dummy => ctx.increment_dummy_count(),
+            _ => expr.set_parent(traversable::Parent::BinaryExpressionLeft(self), ctx),
+        }
+        self.borrow_mut(ctx).left = expr;
         // SAFETY: We have removed `old_left` from the AST
         unsafe { Orphan::new(old_left) }
     }
@@ -769,9 +836,17 @@ impl<'a> GCell<traversable::BinaryExpression<'a>> {
         ctx: &mut TraverseCtx,
     ) -> Orphan<traversable::Expression<'a>> {
         let old_right = self.right(ctx);
-        old_right.remove_parent(ctx);
-        expr.set_parent(traversable::Parent::BinaryExpressionRight(self), ctx);
-        self.borrow_mut(ctx).right = expr.inner();
+        match old_right {
+            // SAFETY: Dummy count is only decremented if node being removed from AST is a dummy
+            traversable::Expression::Dummy => unsafe { ctx.decrement_dummy_count() },
+            _ => old_right.remove_parent(ctx),
+        }
+        let expr = expr.inner();
+        match expr {
+            traversable::Expression::Dummy => ctx.increment_dummy_count(),
+            _ => expr.set_parent(traversable::Parent::BinaryExpressionRight(self), ctx),
+        }
+        self.borrow_mut(ctx).right = expr;
         // SAFETY: We have removed `old_right` from the AST
         unsafe { Orphan::new(old_right) }
     }
@@ -782,7 +857,10 @@ impl<'a> GCell<traversable::BinaryExpression<'a>> {
             &mut self.borrow_mut(ctx).left,
             traversable::Expression::Dummy,
         );
-        expr.remove_parent(ctx);
+        if !matches!(expr, traversable::Expression::Dummy) {
+            expr.remove_parent(ctx);
+            ctx.increment_dummy_count();
+        }
         // SAFETY: We have removed `expr` from the AST
         unsafe { Orphan::new(expr) }
     }
@@ -793,7 +871,10 @@ impl<'a> GCell<traversable::BinaryExpression<'a>> {
             &mut self.borrow_mut(ctx).right,
             traversable::Expression::Dummy,
         );
-        expr.remove_parent(ctx);
+        if !matches!(expr, traversable::Expression::Dummy) {
+            expr.remove_parent(ctx);
+            ctx.increment_dummy_count();
+        }
         // SAFETY: We have removed `expr` from the AST
         unsafe { Orphan::new(expr) }
     }
@@ -844,6 +925,8 @@ impl<'a> traversable::UnaryExpression<'a> {
         ctx: &mut TraverseCtx,
     ) -> Orphan<traversable::Expression<'a>> {
         let argument = argument.inner();
+        // We can't allow a dummy to sneak into AST this way without incrementing dummy count
+        assert!(!matches!(argument, traversable::Expression::Dummy));
         let expr = alloc.galloc(Self {
             operator,
             argument,
@@ -898,9 +981,17 @@ impl<'a> GCell<traversable::UnaryExpression<'a>> {
         ctx: &mut TraverseCtx,
     ) -> Orphan<traversable::Expression<'a>> {
         let old_argument = self.argument(ctx);
-        old_argument.remove_parent(ctx);
-        expr.set_parent(traversable::Parent::UnaryExpressionArgument(self), ctx);
-        self.borrow_mut(ctx).argument = expr.inner();
+        match old_argument {
+            // SAFETY: Dummy count is only decremented if node being removed from AST is a dummy
+            traversable::Expression::Dummy => unsafe { ctx.decrement_dummy_count() },
+            _ => old_argument.remove_parent(ctx),
+        }
+        let expr = expr.inner();
+        match expr {
+            traversable::Expression::Dummy => ctx.increment_dummy_count(),
+            _ => expr.set_parent(traversable::Parent::UnaryExpressionArgument(self), ctx),
+        }
+        self.borrow_mut(ctx).argument = expr;
         // SAFETY: We have removed `old_right` from the AST
         unsafe { Orphan::new(old_argument) }
     }
@@ -911,7 +1002,10 @@ impl<'a> GCell<traversable::UnaryExpression<'a>> {
             &mut self.borrow_mut(ctx).argument,
             traversable::Expression::Dummy,
         );
-        expr.remove_parent(ctx);
+        if !matches!(expr, traversable::Expression::Dummy) {
+            expr.remove_parent(ctx);
+            ctx.increment_dummy_count();
+        }
         // SAFETY: We have removed `expr` from the AST
         unsafe { Orphan::new(expr) }
     }
