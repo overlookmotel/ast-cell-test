@@ -32,7 +32,6 @@ pub trait Visit<'a> {
     fn walk_statement(&mut self, stmt: &Statement<'a>) {
         match stmt {
             Statement::ExpressionStatement(expr_stmt) => self.visit_expression_statement(expr_stmt),
-            Statement::Dummy => unreachable!(),
         }
     }
 
@@ -62,7 +61,6 @@ pub trait Visit<'a> {
             Expression::UnaryExpression(unary_expr) => {
                 self.visit_unary_expression(unary_expr);
             }
-            Expression::Dummy => unreachable!(),
         }
     }
 

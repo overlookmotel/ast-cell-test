@@ -414,8 +414,7 @@ impl<'a> GCell<traversable::Program<'a>> {
 #[derive(Debug)]
 #[repr(C, u8)]
 pub enum Statement<'a> {
-    Dummy = 0,
-    ExpressionStatement(Box<'a, ExpressionStatement<'a>>) = 1,
+    ExpressionStatement(Box<'a, ExpressionStatement<'a>>) = 0,
 }
 
 // `Dummy` variant is a temporary placeholder indicating that a node has been removed from the AST.
@@ -430,8 +429,8 @@ pub enum Statement<'a> {
 #[derive(Clone, Copy)]
 #[repr(C, u8)]
 pub enum TraversableStatement<'a> {
-    Dummy = 0,
-    ExpressionStatement(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 1,
+    ExpressionStatement(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 0,
+    Dummy = 128,
 }
 
 link_types!(Statement, TraversableStatement);
@@ -569,22 +568,21 @@ impl<'a> TraversableAstBuilder<'a> {
 #[derive(Debug)]
 #[repr(C, u8)]
 pub enum Expression<'a> {
-    Dummy = 0,
-    StringLiteral(Box<'a, StringLiteral<'a>>) = 1,
-    Identifier(Box<'a, IdentifierReference<'a>>) = 2,
-    BinaryExpression(Box<'a, BinaryExpression<'a>>) = 3,
-    UnaryExpression(Box<'a, UnaryExpression<'a>>) = 4,
+    StringLiteral(Box<'a, StringLiteral<'a>>) = 0,
+    Identifier(Box<'a, IdentifierReference<'a>>) = 1,
+    BinaryExpression(Box<'a, BinaryExpression<'a>>) = 2,
+    UnaryExpression(Box<'a, UnaryExpression<'a>>) = 3,
 }
 
 // NB: `Copy` because it's only 16 bytes
 #[derive(Clone, Copy)]
 #[repr(C, u8)]
 pub enum TraversableExpression<'a> {
-    Dummy = 0,
-    StringLiteral(SharedBox<'a, traversable::StringLiteral<'a>>) = 1,
-    Identifier(SharedBox<'a, traversable::IdentifierReference<'a>>) = 2,
-    BinaryExpression(SharedBox<'a, traversable::BinaryExpression<'a>>) = 3,
-    UnaryExpression(SharedBox<'a, traversable::UnaryExpression<'a>>) = 4,
+    StringLiteral(SharedBox<'a, traversable::StringLiteral<'a>>) = 0,
+    Identifier(SharedBox<'a, traversable::IdentifierReference<'a>>) = 1,
+    BinaryExpression(SharedBox<'a, traversable::BinaryExpression<'a>>) = 2,
+    UnaryExpression(SharedBox<'a, traversable::UnaryExpression<'a>>) = 3,
+    Dummy = 128,
 }
 
 link_types!(Expression, TraversableExpression);
