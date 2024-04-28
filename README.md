@@ -75,7 +75,7 @@ to circumvent the invariant via `borrow_mut`.
 e.g.:
 ```rs
 // This is not possible
-let unary_expr_mut = unary_expr_ref.borrow_mut(tk);
+let unary_expr_mut = unary_expr_ref.borrow_mut(ctx);
 *unary_expr_mut = get_owned_unary_expr_somehow();
 ```
 
