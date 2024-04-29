@@ -29,9 +29,6 @@
 //!
 //! These constraints are enforced via the borrow-checker, and have zero runtime cost.
 //!
-//! All AST nodes are doubly-linked - links down to their children, and a link up to their parent.
-//! This allows limitless travel around the AST in any direction.
-//!
 //! NB: Holding a `SharedBox<T>` is not the same as holding the node itself. You can hold as many
 //! `SharedBox<T>`s as you like at any time, even while holding a `&mut` ref to an AST node.
 //! You just cannot "open" a box to obtain a mutable ref to the node it contains with
@@ -67,9 +64,9 @@
 //! This prevents a node from being attached to the AST in more than 1 place, by insisting it must be
 //! removed from it's current position in AST first.
 //!
-//! To maintain these invariants, it is essential that access to `.parent` and other fields containing
-//! nodes are not public outside this file. Alteration of these fields must only be allowed via
-//! methods (e.g. `replace_*`), which enforce the no-duplicates rule.
+//! To maintain these invariants, it is essential that access to fields containing nodes are not
+//! public outside this file. Alteration of these fields must only be allowed via methods
+//! (e.g. `replace_*`, `swap_with`), which enforce the no-duplicates rule.
 //!
 //! There must be **no** public API to obtain an owned struct AST node, otherwise it would be possible
 //! to circumvent the invariant via `borrow_mut`.
@@ -85,25 +82,7 @@
 //!
 //! This implies that struct AST node types must **not** be `Clone`.
 //!
-//! Enum AST node types can be `Copy` and `Clone` as they don't have a `parent` field. Each of their
-//! variants contains a `SharedBox<T>` ref to the specific node type, and *those* contain the `parent`.
-//!
-//! # Cycles of nodes
-//!
-//! The above does not prevent circular references between nodes, or even a node whose parent is itself.
-//! However, this is fine from a safety perspective. Such a circular set of nodes by definition cannot
-//! be connected to the tree which extends down from `Program`, so it's "floating in space" unconnected
-//! to the AST.
-//!
-//! Such a circular structure is illegal in the standard AST, and it would likely be UB to attempt to
-//! traverse it in "standard land". But as all that's returned to "standard land" is the `Program`,
-//! the illegal loop cannot be reached from there, and this unsound situation cannot arise.
-//!
-//! In the traversable AST, if you're in the middle of traversing a node and it's turned into part of
-//! a cycle, this will lead to an infinite loop - a traversal which keeps going around in circles.
-//! Not good, but not UB. It would not be possible to prevent this statically, and even checking for
-//! circularity at runtime would be fairly expensive, so we leave it as a situation that consumer of
-//! the AST must ensure they avoid themselves when modifying the AST.
+//! Enum AST node types can be `Copy` and `Clone`. Each of their variants contains a `SharedBox<T>`.
 //!
 //! # SAFETY
 //!
@@ -132,8 +111,8 @@
 // not a graph, and we've made it impossible for a node to be in the AST twice.
 // Therefore, we can mutably borrow all of the properties of a node simultaneously, and can be sure
 // they can't alias. e.g. can mutably borrow `left` and `right` of `BinaryExpression` simultaneously.
-// NB: *Cannot* mut borrow `parent` at same time, as cycles in AST are possible, so e.g. `left`
-// and `parent` could point to the same node.
+// NB: *Cannot* mut borrow parent at same time, as cycles in AST are possible, so e.g. `left`
+// and parent could point to the same node.
 
 use oxc_allocator::{Allocator, Box, Vec};
 
@@ -237,15 +216,8 @@ impl<'a> TraversableAstBuilder<'a> {
     }
 }
 
-/// Trait for traversable enums
-pub trait TraversableEnum<'a>: Copy {
-    fn parent(&self, tk: &Token) -> traversable::Parent<'a>;
-    fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token);
-    fn remove_parent(&self, tk: &mut Token);
-}
-
 /// Trait for traversable struct fields
-pub trait TraversableField<'a, T: TraversableEnum<'a>>: Sized {
+pub trait TraversableField<'a, T>: Sized {
     fn get(&self, tk: &Token) -> T;
     fn set(&self, left: T, tk: &mut Token);
 
@@ -254,11 +226,6 @@ pub trait TraversableField<'a, T: TraversableEnum<'a>>: Sized {
         let other_enum = other.get(tk);
         self.set(other_enum, tk);
         other.set(self_enum, tk);
-
-        let self_parent = self_enum.parent(tk);
-        let other_parent = other_enum.parent(tk);
-        self_enum.set_parent(other_parent, tk);
-        other_enum.set_parent(self_parent, tk);
     }
 }
 
@@ -310,8 +277,6 @@ impl<'a> GCell<traversable::Program<'a>> {
         stmt: Orphan<traversable::Statement<'a>>,
         tk: &mut Token,
     ) -> Orphan<traversable::Statement<'a>> {
-        stmt.set_parent(traversable::Parent::ProgramBody(self), tk);
-
         // Unsafe code here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
         // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
         // Currently code here is sound for `Program`, as `Program` cannot be in `Vec` of statements.
@@ -324,7 +289,6 @@ impl<'a> GCell<traversable::Program<'a>> {
         // ```
         // let old_stmt = std::mem::replace(&mut self.borrow_mut(tk).body[index], GCell::new(stmt.inner()))
         // let old_stmt = *old_stmt.borrow(tk);
-        // old_stmt.remove_parent(tk);
         // return unsafe { Orphan::new(old_stmt) };
         // ```
         // i.e. we replace the cell itself, rather than the *contents* of the cell.
@@ -333,8 +297,6 @@ impl<'a> GCell<traversable::Program<'a>> {
         // SAFETY: We checked `index` is in bounds.
         let item = unsafe { &*self.borrow(tk).body.as_ptr().add(index) };
         let old_stmt = item.replace(stmt.inner(), tk);
-        old_stmt.remove_parent(tk);
-
         // SAFETY: We have removed `old_stmt` from the AST
         unsafe { Orphan::new(old_stmt) }
     }
@@ -348,7 +310,6 @@ impl<'a> GCell<traversable::Program<'a>> {
     }
 
     pub fn push_body_stmt(&'a self, stmt: Orphan<traversable::Statement<'a>>, tk: &mut Token) {
-        stmt.set_parent(traversable::Parent::ProgramBody(self), tk);
         self.borrow_mut(tk).body.push(GCell::new(stmt.inner()));
     }
 }
@@ -389,37 +350,14 @@ pub enum TraversableStatement<'a> {
 
 link_types!(Statement, TraversableStatement);
 
-impl<'a> TraversableEnum<'a> for traversable::Statement<'a> {
-    fn parent(&self, tk: &Token) -> traversable::Parent<'a> {
-        match self {
-            Self::ExpressionStatement(stmt) => stmt.borrow(tk).parent,
-        }
-    }
-
-    fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
-        match self {
-            Self::ExpressionStatement(expr_stmt) => {
-                expr_stmt.borrow_mut(tk).parent = parent;
-            }
-        }
-    }
-
-    #[inline]
-    fn remove_parent(&self, tk: &mut Token) {
-        self.set_parent(traversable::Parent::None, tk);
-    }
-}
-
 #[derive(Debug)]
 #[repr(C)]
 pub struct ExpressionStatement<'a> {
-    pub parent: Parent<'a>,
     pub expression: Expression<'a>,
 }
 
 #[repr(C)]
 pub struct TraversableExpressionStatement<'a> {
-    parent: traversable::Parent<'a>,
     expression: traversable::Expression<'a>,
 }
 
@@ -429,14 +367,10 @@ impl<'a> traversable::ExpressionStatement<'a> {
     pub fn new_stmt_in(
         expression: Orphan<traversable::Expression<'a>>,
         alloc: &'a Allocator,
-        tk: &mut Token,
     ) -> Orphan<traversable::Statement<'a>> {
-        let expression = expression.inner();
         let stmt = alloc.galloc(Self {
-            expression,
-            parent: traversable::Parent::None,
+            expression: expression.inner(),
         });
-        expression.set_parent(traversable::Parent::ExpressionStatementExpression(stmt), tk);
         // SAFETY: Node is newly created so by definition is not yet attached to AST
         unsafe { Orphan::new(traversable::Statement::ExpressionStatement(stmt)) }
     }
@@ -444,24 +378,9 @@ impl<'a> traversable::ExpressionStatement<'a> {
     pub fn expression(&self) -> traversable::Expression<'a> {
         self.expression
     }
-
-    pub fn parent(&self) -> traversable::Parent<'a> {
-        self.parent
-    }
-
-    // SAFETY: Caller must ensure parent is set correctly to track whether node is
-    // currently attached to AST or not. See doc comment at top of file.
-    pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
-        self.parent = parent;
-    }
 }
 
 impl<'a> GCell<traversable::ExpressionStatement<'a>> {
-    /// Convenience method for getting `parent` from a ref.
-    pub fn parent(&'a self, tk: &Token) -> traversable::Parent<'a> {
-        self.borrow(tk).parent
-    }
-
     /// Convenience method for getting `expression` from a ref.
     #[inline]
     pub fn expression(&'a self, tk: &Token) -> traversable::Expression<'a> {
@@ -475,8 +394,6 @@ impl<'a> GCell<traversable::ExpressionStatement<'a>> {
         tk: &mut Token,
     ) -> Orphan<traversable::Expression<'a>> {
         let old_expression = self.expression(tk);
-        old_expression.remove_parent(tk);
-        expr.set_parent(traversable::Parent::ExpressionStatementExpression(self), tk);
         self.borrow_mut(tk).expression = expr.inner();
         // SAFETY: We have removed `old_expression` from the AST
         unsafe { Orphan::new(old_expression) }
@@ -511,9 +428,8 @@ impl<'a> TraversableAstBuilder<'a> {
     pub fn expression_statement(
         &self,
         expression: Orphan<traversable::Expression<'a>>,
-        tk: &mut Token,
     ) -> Orphan<traversable::Statement<'a>> {
-        traversable::ExpressionStatement::new_stmt_in(expression, self.allocator, tk)
+        traversable::ExpressionStatement::new_stmt_in(expression, self.allocator)
     }
 }
 
@@ -538,48 +454,14 @@ pub enum TraversableExpression<'a> {
 
 link_types!(Expression, TraversableExpression);
 
-impl<'a> TraversableEnum<'a> for traversable::Expression<'a> {
-    fn parent(&self, tk: &Token) -> traversable::Parent<'a> {
-        match self {
-            Self::StringLiteral(expr) => expr.borrow(tk).parent,
-            Self::Identifier(expr) => expr.borrow(tk).parent,
-            Self::BinaryExpression(expr) => expr.borrow(tk).parent,
-            Self::UnaryExpression(expr) => expr.borrow(tk).parent,
-        }
-    }
-
-    fn set_parent(&self, parent: traversable::Parent<'a>, tk: &mut Token) {
-        match self {
-            Self::StringLiteral(expr) => {
-                expr.borrow_mut(tk).parent = parent;
-            }
-            Self::Identifier(expr) => {
-                expr.borrow_mut(tk).parent = parent;
-            }
-            Self::BinaryExpression(expr) => {
-                expr.borrow_mut(tk).parent = parent;
-            }
-            Self::UnaryExpression(expr) => {
-                expr.borrow_mut(tk).parent = parent;
-            }
-        }
-    }
-
-    fn remove_parent(&self, tk: &mut Token) {
-        self.set_parent(traversable::Parent::None, tk);
-    }
-}
-
 #[derive(Debug)]
 #[repr(C)]
 pub struct IdentifierReference<'a> {
-    pub parent: Parent<'a>,
     pub name: &'a str,
 }
 
 #[repr(C)]
 pub struct TraversableIdentifierReference<'a> {
-    parent: traversable::Parent<'a>,
     pub name: &'a str,
 }
 
@@ -587,29 +469,9 @@ link_types!(IdentifierReference, TraversableIdentifierReference);
 
 impl<'a> traversable::IdentifierReference<'a> {
     pub fn new_expr_in(name: &'a str, alloc: &'a Allocator) -> Orphan<traversable::Expression<'a>> {
-        let expr = alloc.galloc(Self {
-            name,
-            parent: traversable::Parent::None,
-        });
+        let expr = alloc.galloc(Self { name });
         // SAFETY: Node is newly created so by definition is not yet attached to AST
         unsafe { Orphan::new(traversable::Expression::Identifier(expr)) }
-    }
-
-    pub fn parent(&self) -> traversable::Parent<'a> {
-        self.parent
-    }
-
-    // SAFETY: Caller must ensure parent is set correctly to track whether node is
-    // currently attached to AST or not. See doc comment at top of file.
-    pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
-        self.parent = parent;
-    }
-}
-
-impl<'a> GCell<traversable::IdentifierReference<'a>> {
-    /// Convenience method for getting `parent` from a ref.
-    pub fn parent(&'a self, tk: &Token) -> traversable::Parent<'a> {
-        self.borrow(tk).parent
     }
 }
 
@@ -623,13 +485,11 @@ impl<'a> TraversableAstBuilder<'a> {
 #[derive(Debug)]
 #[repr(C)]
 pub struct StringLiteral<'a> {
-    pub parent: Parent<'a>,
     pub value: &'a str,
 }
 
 #[repr(C)]
 pub struct TraversableStringLiteral<'a> {
-    parent: traversable::Parent<'a>,
     pub value: &'a str,
 }
 
@@ -640,29 +500,9 @@ impl<'a> traversable::StringLiteral<'a> {
         value: &'a str,
         alloc: &'a Allocator,
     ) -> Orphan<traversable::Expression<'a>> {
-        let expr = alloc.galloc(Self {
-            value,
-            parent: traversable::Parent::None,
-        });
+        let expr = alloc.galloc(Self { value });
         // SAFETY: Node is newly created so by definition is not yet attached to AST
         unsafe { Orphan::new(traversable::Expression::StringLiteral(expr)) }
-    }
-
-    pub fn parent(&self) -> traversable::Parent<'a> {
-        self.parent
-    }
-
-    // SAFETY: Caller must ensure parent is set correctly to track whether node is
-    // currently attached to AST or not. See doc comment at top of file.
-    pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
-        self.parent = parent;
-    }
-}
-
-impl<'a> GCell<traversable::StringLiteral<'a>> {
-    /// Convenience method for getting `parent` from a ref.
-    pub fn parent(&'a self, tk: &Token) -> traversable::Parent<'a> {
-        self.borrow(tk).parent
     }
 }
 
@@ -676,7 +516,6 @@ impl<'a> TraversableAstBuilder<'a> {
 #[derive(Debug)]
 #[repr(C)]
 pub struct BinaryExpression<'a> {
-    pub parent: Parent<'a>,
     pub left: Expression<'a>,
     pub operator: BinaryOperator,
     pub right: Expression<'a>,
@@ -684,7 +523,6 @@ pub struct BinaryExpression<'a> {
 
 #[repr(C)]
 pub struct TraversableBinaryExpression<'a> {
-    parent: traversable::Parent<'a>,
     left: traversable::Expression<'a>,
     pub operator: BinaryOperator,
     right: traversable::Expression<'a>,
@@ -698,18 +536,12 @@ impl<'a> traversable::BinaryExpression<'a> {
         operator: BinaryOperator,
         right: Orphan<traversable::Expression<'a>>,
         alloc: &'a Allocator,
-        tk: &mut Token,
     ) -> Orphan<traversable::Expression<'a>> {
-        let left = left.inner();
-        let right = right.inner();
         let expr = alloc.galloc(Self {
-            left,
+            left: left.inner(),
             operator,
-            right,
-            parent: traversable::Parent::None,
+            right: right.inner(),
         });
-        left.set_parent(traversable::Parent::BinaryExpressionLeft(expr), tk);
-        right.set_parent(traversable::Parent::BinaryExpressionRight(expr), tk);
         // SAFETY: Node is newly created so by definition is not yet attached to AST
         unsafe { Orphan::new(traversable::Expression::BinaryExpression(expr)) }
     }
@@ -721,24 +553,9 @@ impl<'a> traversable::BinaryExpression<'a> {
     pub fn right(&self) -> traversable::Expression<'a> {
         self.right
     }
-
-    pub fn parent(self) -> traversable::Parent<'a> {
-        self.parent
-    }
-
-    // SAFETY: Caller must ensure parent is set correctly to track whether node is
-    // currently attached to AST or not. See doc comment at top of file.
-    pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
-        self.parent = parent;
-    }
 }
 
 impl<'a> GCell<traversable::BinaryExpression<'a>> {
-    /// Convenience method for getting `parent` from a ref.
-    pub fn parent(&'a self, tk: &Token) -> traversable::Parent<'a> {
-        self.borrow(tk).parent
-    }
-
     /// Convenience method for getting `left` from a ref.
     #[inline]
     pub fn left(&'a self, tk: &Token) -> traversable::Expression<'a> {
@@ -768,8 +585,6 @@ impl<'a> GCell<traversable::BinaryExpression<'a>> {
         tk: &mut Token,
     ) -> Orphan<traversable::Expression<'a>> {
         let old_left = self.left(tk);
-        old_left.remove_parent(tk);
-        expr.set_parent(traversable::Parent::BinaryExpressionLeft(self), tk);
         self.borrow_mut(tk).left = expr.inner();
         // SAFETY: We have removed `old_left` from the AST
         unsafe { Orphan::new(old_left) }
@@ -782,8 +597,6 @@ impl<'a> GCell<traversable::BinaryExpression<'a>> {
         tk: &mut Token,
     ) -> Orphan<traversable::Expression<'a>> {
         let old_right = self.right(tk);
-        old_right.remove_parent(tk);
-        expr.set_parent(traversable::Parent::BinaryExpressionRight(self), tk);
         self.borrow_mut(tk).right = expr.inner();
         // SAFETY: We have removed `old_right` from the AST
         unsafe { Orphan::new(old_right) }
@@ -837,9 +650,8 @@ impl<'a> TraversableAstBuilder<'a> {
         left: Orphan<traversable::Expression<'a>>,
         operator: BinaryOperator,
         right: Orphan<traversable::Expression<'a>>,
-        tk: &mut Token,
     ) -> Orphan<traversable::Expression<'a>> {
-        traversable::BinaryExpression::new_expr_in(left, operator, right, self.allocator, tk)
+        traversable::BinaryExpression::new_expr_in(left, operator, right, self.allocator)
     }
 }
 
@@ -853,14 +665,12 @@ pub enum BinaryOperator {
 #[derive(Debug)]
 #[repr(C)]
 pub struct UnaryExpression<'a> {
-    pub parent: Parent<'a>,
     pub operator: UnaryOperator,
     pub argument: Expression<'a>,
 }
 
 #[repr(C)]
 pub struct TraversableUnaryExpression<'a> {
-    parent: traversable::Parent<'a>,
     pub operator: UnaryOperator,
     argument: traversable::Expression<'a>,
 }
@@ -872,15 +682,11 @@ impl<'a> traversable::UnaryExpression<'a> {
         operator: UnaryOperator,
         argument: Orphan<traversable::Expression<'a>>,
         alloc: &'a Allocator,
-        tk: &mut Token,
     ) -> Orphan<traversable::Expression<'a>> {
-        let argument = argument.inner();
         let expr = alloc.galloc(Self {
             operator,
-            argument,
-            parent: traversable::Parent::None,
+            argument: argument.inner(),
         });
-        argument.set_parent(traversable::Parent::UnaryExpressionArgument(expr), tk);
         // SAFETY: Node is newly created so by definition is not yet attached to AST
         unsafe { Orphan::new(traversable::Expression::UnaryExpression(expr)) }
     }
@@ -888,24 +694,9 @@ impl<'a> traversable::UnaryExpression<'a> {
     pub fn argument(&self) -> traversable::Expression<'a> {
         self.argument
     }
-
-    pub fn parent(&self) -> traversable::Parent<'a> {
-        self.parent
-    }
-
-    // SAFETY: Caller must ensure parent is set correctly to track whether node is
-    // currently attached to AST or not. See doc comment at top of file.
-    pub unsafe fn set_parent(&mut self, parent: traversable::Parent<'a>) {
-        self.parent = parent;
-    }
 }
 
 impl<'a> GCell<traversable::UnaryExpression<'a>> {
-    /// Convenience method for getting `parent` from a ref.
-    pub fn parent(&'a self, tk: &Token) -> traversable::Parent<'a> {
-        self.borrow(tk).parent
-    }
-
     /// Convenience method for getting `argument` from a ref.
     #[inline]
     pub fn argument(&'a self, tk: &Token) -> traversable::Expression<'a> {
@@ -929,8 +720,6 @@ impl<'a> GCell<traversable::UnaryExpression<'a>> {
         tk: &mut Token,
     ) -> Orphan<traversable::Expression<'a>> {
         let old_argument = self.argument(tk);
-        old_argument.remove_parent(tk);
-        expr.set_parent(traversable::Parent::UnaryExpressionArgument(self), tk);
         self.borrow_mut(tk).argument = expr.inner();
         // SAFETY: We have removed `old_right` from the AST
         unsafe { Orphan::new(old_argument) }
@@ -964,9 +753,8 @@ impl<'a> TraversableAstBuilder<'a> {
         &self,
         operator: UnaryOperator,
         argument: Orphan<traversable::Expression<'a>>,
-        tk: &mut Token,
     ) -> Orphan<traversable::Expression<'a>> {
-        traversable::UnaryExpression::new_expr_in(operator, argument, self.allocator, tk)
+        traversable::UnaryExpression::new_expr_in(operator, argument, self.allocator)
     }
 }
 
@@ -982,57 +770,15 @@ pub enum UnaryOperator {
     Delete = 6,
 }
 
-/// Parent type used in standard AST.
+/// Parent type used in traversable AST.
 ///
 /// Encodes both the type of the parent, and child's location in the parent.
 /// i.e. variants for `BinaryExpressionLeft` and `BinaryExpressionRight`, not just `BinaryExpression`.
-///
-/// It is not so useful in the standard AST though, as the actual parent is not accessible via this type
-/// (such circular references would be UB in the standard AST).
-///
-/// This type is only present in the standard AST to maintain space for `TraversableParent`
-/// in the traversable AST. In the traversable AST, it is possible (and necessary) to alter `parent`.
-/// When creating a standard AST, all `parent` fields should be set to `Parent::None`.
-/// `semantic` works on the traversable AST and will set `parent` on each node correctly
-/// before the AST goes to the transformer.
-///
-/// If an AST has been through `semantic`, it can be used in the standard AST to get the *type*
-/// of the parent e.g. `let is_top_level = matches!(node.parent, Parent::Program);`.
-/// But if the AST has been modified in "standard AST land", this info may be inaccurate.
-/// This will not be UB, just wrong.
-#[derive(Debug)]
-#[repr(C, u8)]
-pub enum Parent<'a> {
-    None = 0,
-    ProgramBody(ParentPointer<Program<'a>>) = 1,
-    ExpressionStatementExpression(ParentPointer<ExpressionStatement<'a>>) = 2,
-    BinaryExpressionLeft(ParentPointer<BinaryExpression<'a>>) = 3,
-    BinaryExpressionRight(ParentPointer<BinaryExpression<'a>>) = 4,
-    UnaryExpressionArgument(ParentPointer<UnaryExpression<'a>>) = 5,
-}
-
-/// Wrapper around pointer to parent.
-/// Type is opaque to external consumer. Pointer it contains cannot be read or written,
-/// and no API is provided to create one outside of this module.
-/// Purpose is to be the substitute for `&GCell` which this is transmuted to in the traversable AST.
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct ParentPointer<T>(*const T);
-
-/// Parent link type for traversable AST.
-/// This type is `Copy`, to make them easy to pass around.
-/// Currently 16 bytes, which is unfortunate as it appears in every AST node.
-/// We could likely squeeze it down to 8 bytes using pointer tagging.
-// NB: `Copy` because it's only 16 bytes
 #[derive(Clone, Copy)]
-#[repr(C, u8)]
 pub enum TraversableParent<'a> {
-    None = 0,
-    ProgramBody(SharedBox<'a, traversable::Program<'a>>) = 1,
-    ExpressionStatementExpression(SharedBox<'a, traversable::ExpressionStatement<'a>>) = 2,
-    BinaryExpressionLeft(SharedBox<'a, traversable::BinaryExpression<'a>>) = 3,
-    BinaryExpressionRight(SharedBox<'a, traversable::BinaryExpression<'a>>) = 4,
-    UnaryExpressionArgument(SharedBox<'a, traversable::UnaryExpression<'a>>) = 5,
+    ProgramBody(SharedBox<'a, traversable::Program<'a>>),
+    ExpressionStatementExpression(SharedBox<'a, traversable::ExpressionStatement<'a>>),
+    BinaryExpressionLeft(SharedBox<'a, traversable::BinaryExpression<'a>>),
+    BinaryExpressionRight(SharedBox<'a, traversable::BinaryExpression<'a>>),
+    UnaryExpressionArgument(SharedBox<'a, traversable::UnaryExpression<'a>>),
 }
-
-link_types!(Parent, TraversableParent);

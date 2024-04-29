@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn mutate_standard_ast_after_transform() {
-        use ast::{Expression, IdentifierReference, Parent, Statement, StringLiteral};
+        use ast::{Expression, IdentifierReference, Statement, StringLiteral};
         use oxc_allocator::Box;
         use std::mem;
 
@@ -86,10 +86,7 @@ mod tests {
         };
         let left = mem::replace(
             &mut bin_expr.left,
-            Expression::StringLiteral(Box(alloc.alloc(StringLiteral {
-                value: "whatever",
-                parent: Parent::None,
-            }))),
+            Expression::StringLiteral(Box(alloc.alloc(StringLiteral { value: "whatever" }))),
         );
         let right = mem::replace(&mut bin_expr.right, left);
         bin_expr.left = right;
@@ -108,10 +105,8 @@ mod tests {
         };
         id.name = "bar";
 
-        unary_expr.argument = Expression::StringLiteral(Box(alloc.alloc(StringLiteral {
-            value: "foo",
-            parent: Parent::None,
-        })));
+        unary_expr.argument =
+            Expression::StringLiteral(Box(alloc.alloc(StringLiteral { value: "foo" })));
 
         let str_lit = if let Expression::StringLiteral(str_lit) = &mut bin_expr.right {
             &mut **str_lit
@@ -120,9 +115,7 @@ mod tests {
         };
         str_lit.value = "string";
 
-        bin_expr.right = Expression::Identifier(Box(alloc.alloc(IdentifierReference {
-            name: "qux",
-            parent: Parent::None,
-        })));
+        bin_expr.right =
+            Expression::Identifier(Box(alloc.alloc(IdentifierReference { name: "qux" })));
     }
 }
