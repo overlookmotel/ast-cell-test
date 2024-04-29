@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         traversable::{
-            BinaryExpression, Expression, ExpressionStatement, IdentifierReference,
+            BinaryExpression, Expression, ExpressionStatement, IdentifierReference, Parent,
             Program as TraversableProgram, Statement, StringLiteral, UnaryExpression,
         },
         Program,
@@ -20,6 +20,9 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
     // SAFETY: We only create one token, and it never leaves this function.
     let mut token = unsafe { Token::new_unchecked() };
 
+    // Create `TraverseCtx` which transformer uses to read ancestry
+    let mut ctx = TraverseCtx::new();
+
     // Convert AST to traversable version.
     // SAFETY: All standard and traversable AST types are mirrors of each other, with identical layouts.
     // This is ensured by `#[repr(C)]` on all types. Therefore one can safely be transmuted to the other.
@@ -35,7 +38,7 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
         GCell::from_mut(unsafe { &mut *(program as *mut Program as *mut TraversableProgram) });
 
     // Run transformer on the traversable AST
-    Traverse::walk_program(transformer, program, &mut token);
+    Traverse::walk_program(transformer, program, &mut ctx, &mut token);
 
     // The access token goes out of scope at this point, which guarantees that no references
     // (either mutable or immutable) to the traversable AST or the token still exist.
@@ -44,52 +47,117 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
     // Therefore, the caller can now safely continue using the `&mut Statement` that they passed in.
 }
 
-pub trait Traverse<'a> {
-    fn walk_program(&mut self, program: SharedBox<'a, TraversableProgram<'a>>, tk: &mut Token) {
-        self.enter_program(program, tk);
+pub struct TraverseCtx<'a> {
+    stack: Vec<Parent<'a>>,
+}
 
+impl<'a> TraverseCtx<'a> {
+    pub fn new() -> Self {
+        Self { stack: Vec::new() }
+    }
+}
+
+impl<'a> TraverseCtx<'a> {
+    #[inline]
+    pub fn parent(&self) -> Parent<'a> {
+        *self.stack.last().unwrap()
+    }
+
+    #[allow(dead_code)] // TODO: Remove this attr once method is used in a transform
+    #[inline]
+    pub fn ancestor(&self, levels: usize) -> Option<Parent<'a>> {
+        self.stack.get(self.stack.len() - levels).copied()
+    }
+
+    #[inline]
+    fn push_stack(&mut self, parent: Parent<'a>) {
+        self.stack.push(parent);
+    }
+
+    #[inline]
+    fn pop_stack(&mut self) {
+        self.stack.pop();
+    }
+
+    #[inline]
+    fn replace_stack(&mut self, parent: Parent<'a>) {
+        let index = self.stack.len() - 1;
+        self.stack[index] = parent;
+    }
+}
+
+pub trait Traverse<'a> {
+    fn walk_program(
+        &mut self,
+        program: SharedBox<'a, TraversableProgram<'a>>,
+        ctx: &mut TraverseCtx<'a>,
+        tk: &mut Token,
+    ) {
+        self.enter_program(program, ctx, tk);
+
+        ctx.push_stack(Parent::ProgramBody(program));
         // Need to read `len()` on each turn of the loop, as `visit_statement` (or a child of it)
         // could add more nodes to the `Vec`
         let mut index = 0;
         while index < program.body_len(tk) {
             let stmt = program.body_stmt(index, tk);
-            self.walk_statement(stmt, tk);
+            self.walk_statement(stmt, ctx, tk);
             index += 1;
         }
-        self.exit_program(program, tk);
+        ctx.pop_stack();
+
+        self.exit_program(program, ctx, tk);
     }
     #[allow(unused_variables)]
-    fn enter_program(&mut self, program: SharedBox<'a, TraversableProgram<'a>>, tk: &mut Token) {}
+    fn enter_program(
+        &mut self,
+        program: SharedBox<'a, TraversableProgram<'a>>,
+        ctx: &TraverseCtx<'a>,
+        tk: &mut Token,
+    ) {
+    }
     #[allow(unused_variables)]
-    fn exit_program(&mut self, program: SharedBox<'a, TraversableProgram<'a>>, tk: &mut Token) {}
+    fn exit_program(
+        &mut self,
+        program: SharedBox<'a, TraversableProgram<'a>>,
+        ctx: &TraverseCtx<'a>,
+        tk: &mut Token,
+    ) {
+    }
 
-    fn walk_statement(&mut self, stmt: Statement<'a>, tk: &mut Token) {
-        self.enter_statement(stmt, tk);
+    fn walk_statement(&mut self, stmt: Statement<'a>, ctx: &mut TraverseCtx<'a>, tk: &mut Token) {
+        self.enter_statement(stmt, ctx, tk);
         match stmt {
             Statement::ExpressionStatement(expr_stmt) => {
-                self.walk_expression_statement(expr_stmt, tk);
+                self.walk_expression_statement(expr_stmt, ctx, tk);
             }
         }
-        self.exit_statement(stmt, tk);
+        self.exit_statement(stmt, ctx, tk);
     }
     #[allow(unused_variables)]
-    fn enter_statement(&mut self, stmt: Statement<'a>, tk: &mut Token) {}
+    fn enter_statement(&mut self, stmt: Statement<'a>, ctx: &TraverseCtx<'a>, tk: &mut Token) {}
     #[allow(unused_variables)]
-    fn exit_statement(&mut self, stmt: Statement<'a>, tk: &mut Token) {}
+    fn exit_statement(&mut self, stmt: Statement<'a>, ctx: &TraverseCtx<'a>, tk: &mut Token) {}
 
     fn walk_expression_statement(
         &mut self,
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
+        ctx: &mut TraverseCtx<'a>,
         tk: &mut Token,
     ) {
-        self.enter_expression_statement(expr_stmt, tk);
-        self.walk_expression(expr_stmt.expression(tk), tk);
-        self.exit_expression_statement(expr_stmt, tk);
+        self.enter_expression_statement(expr_stmt, ctx, tk);
+
+        ctx.push_stack(Parent::ExpressionStatementExpression(expr_stmt));
+        self.walk_expression(expr_stmt.expression(tk), ctx, tk);
+        ctx.pop_stack();
+
+        self.exit_expression_statement(expr_stmt, ctx, tk);
     }
     #[allow(unused_variables)]
     fn enter_expression_statement(
         &mut self,
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
+        ctx: &TraverseCtx<'a>,
         tk: &mut Token,
     ) {
     }
@@ -97,58 +165,73 @@ pub trait Traverse<'a> {
     fn exit_expression_statement(
         &mut self,
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
+        ctx: &TraverseCtx<'a>,
         tk: &mut Token,
     ) {
     }
 
-    fn walk_expression(&mut self, expr: Expression<'a>, tk: &mut Token) {
-        self.enter_expression(expr, tk);
+    fn walk_expression(&mut self, expr: Expression<'a>, ctx: &mut TraverseCtx<'a>, tk: &mut Token) {
+        self.enter_expression(expr, ctx, tk);
         match expr {
             Expression::Identifier(id) => {
-                self.visit_identifier_reference(id, tk);
+                self.visit_identifier_reference(id, ctx, tk);
             }
             Expression::StringLiteral(str_lit) => {
-                self.visit_string_literal(str_lit, tk);
+                self.visit_string_literal(str_lit, ctx, tk);
             }
             Expression::BinaryExpression(bin_expr) => {
-                self.walk_binary_expression(bin_expr, tk);
+                self.walk_binary_expression(bin_expr, ctx, tk);
             }
             Expression::UnaryExpression(unary_expr) => {
-                self.walk_unary_expression(unary_expr, tk);
+                self.walk_unary_expression(unary_expr, ctx, tk);
             }
         }
-        self.exit_expression(expr, tk);
+        self.exit_expression(expr, ctx, tk);
     }
     #[allow(unused_variables)]
-    fn enter_expression(&mut self, expr: Expression<'a>, tk: &mut Token) {}
+    fn enter_expression(&mut self, expr: Expression<'a>, ctx: &TraverseCtx<'a>, tk: &mut Token) {}
     #[allow(unused_variables)]
-    fn exit_expression(&mut self, expr: Expression<'a>, tk: &mut Token) {}
+    fn exit_expression(&mut self, expr: Expression<'a>, ctx: &TraverseCtx<'a>, tk: &mut Token) {}
 
     #[allow(unused_variables)]
     fn visit_identifier_reference(
         &mut self,
         id: SharedBox<'a, IdentifierReference<'a>>,
+        ctx: &TraverseCtx<'a>,
         tk: &mut Token,
     ) {
     }
 
     #[allow(unused_variables)]
-    fn visit_string_literal(&mut self, str_lit: SharedBox<'a, StringLiteral<'a>>, tk: &mut Token) {}
+    fn visit_string_literal(
+        &mut self,
+        str_lit: SharedBox<'a, StringLiteral<'a>>,
+        ctx: &TraverseCtx<'a>,
+        tk: &mut Token,
+    ) {
+    }
 
     fn walk_binary_expression(
         &mut self,
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
+        ctx: &mut TraverseCtx<'a>,
         tk: &mut Token,
     ) {
-        self.enter_binary_expression(bin_expr, tk);
-        self.walk_expression(bin_expr.left(tk), tk);
-        self.walk_expression(bin_expr.right(tk), tk);
-        self.exit_binary_expression(bin_expr, tk);
+        self.enter_binary_expression(bin_expr, ctx, tk);
+
+        ctx.push_stack(Parent::BinaryExpressionLeft(bin_expr));
+        self.walk_expression(bin_expr.left(tk), ctx, tk);
+        ctx.replace_stack(Parent::BinaryExpressionRight(bin_expr));
+        self.walk_expression(bin_expr.right(tk), ctx, tk);
+        ctx.pop_stack();
+
+        self.exit_binary_expression(bin_expr, ctx, tk);
     }
     #[allow(unused_variables)]
     fn enter_binary_expression(
         &mut self,
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
+        ctx: &TraverseCtx<'a>,
         tk: &mut Token,
     ) {
     }
@@ -156,6 +239,7 @@ pub trait Traverse<'a> {
     fn exit_binary_expression(
         &mut self,
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
+        ctx: &TraverseCtx<'a>,
         tk: &mut Token,
     ) {
     }
@@ -163,16 +247,22 @@ pub trait Traverse<'a> {
     fn walk_unary_expression(
         &mut self,
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
+        ctx: &mut TraverseCtx<'a>,
         tk: &mut Token,
     ) {
-        self.enter_unary_expression(unary_expr, tk);
-        self.walk_expression(unary_expr.argument(tk), tk);
-        self.exit_unary_expression(unary_expr, tk);
+        self.enter_unary_expression(unary_expr, ctx, tk);
+
+        ctx.push_stack(Parent::UnaryExpressionArgument(unary_expr));
+        self.walk_expression(unary_expr.argument(tk), ctx, tk);
+        ctx.pop_stack();
+
+        self.exit_unary_expression(unary_expr, ctx, tk);
     }
     #[allow(unused_variables)]
     fn enter_unary_expression(
         &mut self,
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
+        ctx: &TraverseCtx<'a>,
         tk: &mut Token,
     ) {
     }
@@ -180,6 +270,7 @@ pub trait Traverse<'a> {
     fn exit_unary_expression(
         &mut self,
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
+        ctx: &TraverseCtx<'a>,
         tk: &mut Token,
     ) {
     }

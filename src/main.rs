@@ -4,7 +4,6 @@ mod ast;
 mod cell;
 mod parser;
 mod print;
-mod semantic;
 mod traverse;
 mod visit;
 use ast::{
@@ -13,14 +12,12 @@ use ast::{
 };
 use cell::{SharedBox, Token};
 use print::Printer;
-use semantic::semantic;
-use traverse::{transform, Traverse};
+use traverse::{transform, Traverse, TraverseCtx};
 use visit::Visit;
 
 fn main() {
     let alloc = Allocator::default();
     let program = parser::parse(&alloc);
-    semantic(program);
     println!("before: {}", Printer::print(program));
 
     transform(&mut TransformTypeof, program);
@@ -34,10 +31,11 @@ impl<'a> Traverse<'a> for TransformTypeof {
     fn exit_unary_expression(
         &mut self,
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
+        ctx: &TraverseCtx<'a>,
         tk: &mut Token,
     ) {
         if unary_expr.operator(tk) == UnaryOperator::Typeof {
-            if let Parent::BinaryExpressionLeft(bin_expr) = unary_expr.parent(tk) {
+            if let Parent::BinaryExpressionLeft(bin_expr) = ctx.parent() {
                 if matches!(
                     bin_expr.operator(tk),
                     BinaryOperator::Equality | BinaryOperator::StrictEquality
@@ -60,7 +58,6 @@ mod tests {
     fn transform_traversable_ast() {
         let alloc = Allocator::default();
         let program = parser::parse(&alloc);
-        semantic(program);
         transform(&mut TransformTypeof, program);
     }
 
@@ -72,7 +69,6 @@ mod tests {
 
         let alloc = Allocator::default();
         let program = parser::parse(&alloc);
-        semantic(program);
         transform(&mut TransformTypeof, program);
 
         let stmt = program.body.first_mut().unwrap();
