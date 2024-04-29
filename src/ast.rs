@@ -116,7 +116,10 @@
 
 use oxc_allocator::{Allocator, Box, Vec};
 
-use crate::cell::{GCell, SharedBox, SharedVec, Token};
+use crate::{
+    cell::{GCell, SharedBox, SharedVec, Token},
+    traverse::{Traverse, TraverseCtx},
+};
 
 /// Module namespace for traversable AST node types
 #[allow(unused_imports)]
@@ -234,6 +237,15 @@ pub trait TraversableField<'a, T>: Sized {
     }
 }
 
+pub fn traverse<'a, T: Traverse<'a>>(
+    traverser: &mut T,
+    program: SharedBox<'a, traversable::Program<'a>>,
+    ctx: &mut TraverseCtx<'a>,
+    tk: &mut Token,
+) {
+    walk_traversable_program(traverser, program, ctx, tk);
+}
+
 // --------------------------------------------------------------------------------
 // AST node types
 // --------------------------------------------------------------------------------
@@ -340,6 +352,28 @@ impl<'a> TraversableField<'a, traversable::Statement<'a>> for TraversableProgram
     }
 }
 
+fn walk_traversable_program<'a, T: Traverse<'a>>(
+    traverser: &mut T,
+    program: SharedBox<'a, traversable::Program<'a>>,
+    ctx: &mut TraverseCtx<'a>,
+    tk: &mut Token,
+) {
+    traverser.enter_program(program, ctx, tk);
+
+    ctx.push_stack(TraversableParent::ProgramBody(program));
+    // Need to read `len()` on each turn of the loop, as `visit_statement` (or a child of it)
+    // could add more nodes to the `Vec`
+    let mut index = 0;
+    while index < program.body_len(tk) {
+        let stmt = program.body_stmt(index, tk);
+        walk_traversable_statement(traverser, stmt, ctx, tk);
+        index += 1;
+    }
+    ctx.pop_stack();
+
+    traverser.exit_program(program, ctx, tk);
+}
+
 #[derive(Debug)]
 #[repr(C, u8)]
 pub enum Statement<'a> {
@@ -354,6 +388,21 @@ pub enum TraversableStatement<'a> {
 }
 
 link_types!(Statement, TraversableStatement);
+
+fn walk_traversable_statement<'a, T: Traverse<'a>>(
+    traverser: &mut T,
+    stmt: traversable::Statement<'a>,
+    ctx: &mut TraverseCtx<'a>,
+    tk: &mut Token,
+) {
+    traverser.enter_statement(stmt, ctx, tk);
+    match stmt {
+        traversable::Statement::ExpressionStatement(expr_stmt) => {
+            walk_traversable_expression_statement(traverser, expr_stmt, ctx, tk);
+        }
+    }
+    traverser.exit_statement(stmt, ctx, tk);
+}
 
 #[derive(Debug)]
 #[repr(C)]
@@ -438,6 +487,21 @@ impl<'a> TraversableAstBuilder<'a> {
     }
 }
 
+fn walk_traversable_expression_statement<'a, T: Traverse<'a>>(
+    traverser: &mut T,
+    expr_stmt: SharedBox<'a, traversable::ExpressionStatement<'a>>,
+    ctx: &mut TraverseCtx<'a>,
+    tk: &mut Token,
+) {
+    traverser.enter_expression_statement(expr_stmt, ctx, tk);
+
+    ctx.push_stack(TraversableParent::ExpressionStatementExpression(expr_stmt));
+    walk_traversable_expression(traverser, expr_stmt.expression(tk), ctx, tk);
+    ctx.pop_stack();
+
+    traverser.exit_expression_statement(expr_stmt, ctx, tk);
+}
+
 #[derive(Debug)]
 #[repr(C, u8)]
 pub enum Expression<'a> {
@@ -458,6 +522,30 @@ pub enum TraversableExpression<'a> {
 }
 
 link_types!(Expression, TraversableExpression);
+
+fn walk_traversable_expression<'a, T: Traverse<'a>>(
+    traverser: &mut T,
+    expr: traversable::Expression<'a>,
+    ctx: &mut TraverseCtx<'a>,
+    tk: &mut Token,
+) {
+    traverser.enter_expression(expr, ctx, tk);
+    match expr {
+        traversable::Expression::Identifier(id) => {
+            traverser.visit_identifier_reference(id, ctx, tk);
+        }
+        traversable::Expression::StringLiteral(str_lit) => {
+            traverser.visit_string_literal(str_lit, ctx, tk);
+        }
+        traversable::Expression::BinaryExpression(bin_expr) => {
+            walk_traversable_binary_expression(traverser, bin_expr, ctx, tk);
+        }
+        traversable::Expression::UnaryExpression(unary_expr) => {
+            walk_traversable_unary_expression(traverser, unary_expr, ctx, tk);
+        }
+    }
+    traverser.exit_expression(expr, ctx, tk);
+}
 
 #[derive(Debug)]
 #[repr(C)]
@@ -660,6 +748,23 @@ impl<'a> TraversableAstBuilder<'a> {
     }
 }
 
+fn walk_traversable_binary_expression<'a, T: Traverse<'a>>(
+    traverser: &mut T,
+    bin_expr: SharedBox<'a, traversable::BinaryExpression<'a>>,
+    ctx: &mut TraverseCtx<'a>,
+    tk: &mut Token,
+) {
+    traverser.enter_binary_expression(bin_expr, ctx, tk);
+
+    ctx.push_stack(TraversableParent::BinaryExpressionLeft(bin_expr));
+    walk_traversable_expression(traverser, bin_expr.left(tk), ctx, tk);
+    ctx.replace_stack(TraversableParent::BinaryExpressionRight(bin_expr));
+    walk_traversable_expression(traverser, bin_expr.right(tk), ctx, tk);
+    ctx.pop_stack();
+
+    traverser.exit_binary_expression(bin_expr, ctx, tk);
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
 pub enum BinaryOperator {
@@ -761,6 +866,21 @@ impl<'a> TraversableAstBuilder<'a> {
     ) -> Orphan<traversable::Expression<'a>> {
         traversable::UnaryExpression::new_expr_in(operator, argument, self.allocator)
     }
+}
+
+fn walk_traversable_unary_expression<'a, T: Traverse<'a>>(
+    traverser: &mut T,
+    unary_expr: SharedBox<'a, traversable::UnaryExpression<'a>>,
+    ctx: &mut TraverseCtx<'a>,
+    tk: &mut Token,
+) {
+    traverser.enter_unary_expression(unary_expr, ctx, tk);
+
+    ctx.push_stack(TraversableParent::UnaryExpressionArgument(unary_expr));
+    walk_traversable_expression(traverser, unary_expr.argument(tk), ctx, tk);
+    ctx.pop_stack();
+
+    traverser.exit_unary_expression(unary_expr, ctx, tk);
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
