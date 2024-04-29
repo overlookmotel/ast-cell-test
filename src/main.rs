@@ -31,13 +31,11 @@ fn main() {
 struct TransformTypeof;
 
 impl<'a> Traverse<'a> for TransformTypeof {
-    fn visit_unary_expression(
+    fn exit_unary_expression(
         &mut self,
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
         tk: &mut Token,
     ) {
-        self.walk_unary_expression(unary_expr, tk);
-
         if unary_expr.operator(tk) == UnaryOperator::Typeof {
             if let Parent::BinaryExpressionLeft(bin_expr) = unary_expr.parent(tk) {
                 if matches!(

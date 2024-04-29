@@ -22,12 +22,11 @@ struct Semantic<'a> {
 }
 
 impl<'a> Traverse<'a> for Semantic<'a> {
-    fn visit_program(&mut self, program: SharedBox<'a, TraversableProgram<'a>>, tk: &mut Token) {
+    fn enter_program(&mut self, program: SharedBox<'a, TraversableProgram<'a>>, _tk: &mut Token) {
         self.current_parent = Parent::ProgramBody(program);
-        self.walk_program(program, tk);
     }
 
-    fn visit_expression_statement(
+    fn enter_expression_statement(
         &mut self,
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
         tk: &mut Token,
@@ -36,7 +35,6 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         // SAFETY: We are here establishing the invariant of correct parent tracking
         unsafe { expr_stmt_mut.set_parent(self.current_parent) };
         self.current_parent = Parent::ExpressionStatementExpression(expr_stmt);
-        self.walk_expression_statement(expr_stmt, tk);
     }
 
     #[allow(unused_variables)]
@@ -57,7 +55,7 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         unsafe { str_lit_mut.set_parent(self.current_parent) };
     }
 
-    fn visit_binary_expression(
+    fn walk_binary_expression(
         &mut self,
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
         tk: &mut Token,
@@ -66,12 +64,12 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         // SAFETY: We are here establishing the invariant of correct parent tracking
         unsafe { bin_expr_mut.set_parent(self.current_parent) };
         self.current_parent = Parent::BinaryExpressionLeft(bin_expr);
-        self.visit_expression(bin_expr.left(tk), tk);
+        self.walk_expression(bin_expr.left(tk), tk);
         self.current_parent = Parent::BinaryExpressionRight(bin_expr);
-        self.visit_expression(bin_expr.right(tk), tk);
+        self.walk_expression(bin_expr.right(tk), tk);
     }
 
-    fn visit_unary_expression(
+    fn enter_unary_expression(
         &mut self,
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
         tk: &mut Token,
@@ -80,6 +78,5 @@ impl<'a> Traverse<'a> for Semantic<'a> {
         // SAFETY: We are here establishing the invariant of correct parent tracking
         unsafe { unary_expr_mut.set_parent(self.current_parent) };
         self.current_parent = Parent::UnaryExpressionArgument(unary_expr);
-        self.walk_unary_expression(unary_expr, tk);
     }
 }
