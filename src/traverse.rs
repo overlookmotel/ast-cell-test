@@ -69,7 +69,6 @@ pub trait Traverse<'a> {
             Statement::ExpressionStatement(expr_stmt) => {
                 self.visit_expression_statement(expr_stmt, tk)
             }
-            Statement::Dummy => unreachable!(),
         }
     }
 
@@ -107,7 +106,6 @@ pub trait Traverse<'a> {
             Expression::UnaryExpression(unary_expr) => {
                 self.visit_unary_expression(unary_expr, tk);
             }
-            Expression::Dummy => unreachable!(),
         }
     }
 
