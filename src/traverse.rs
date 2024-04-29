@@ -3,7 +3,7 @@ use oxc_allocator::Allocator;
 use crate::{
     ast::{
         traversable::{
-            BinaryExpression, Expression, ExpressionStatement, IdentifierReference, Parent,
+            Ancestor, BinaryExpression, Expression, ExpressionStatement, IdentifierReference,
             Program as TraversableProgram, Statement, StringLiteral, UnaryExpression,
         },
         traverse, Program, TraversableAstBuilder,
@@ -62,7 +62,7 @@ pub fn transform<'a, T: Traverse<'a>>(
 /// * Create AST nodes via `ctx.ast`.
 /// * Allocate into arena via `ctx.alloc()`.
 pub struct TraverseCtx<'a> {
-    stack: Vec<Parent<'a>>,
+    stack: Vec<Ancestor<'a>>,
     pub ast: TraversableAstBuilder<'a>,
 }
 
@@ -83,18 +83,18 @@ impl<'a> TraverseCtx<'a> {
 
 impl<'a> TraverseCtx<'a> {
     #[inline]
-    pub fn parent(&self) -> Parent<'a> {
+    pub fn parent(&self) -> Ancestor<'a> {
         *self.stack.last().unwrap()
     }
 
     #[allow(dead_code)] // TODO: Remove this attr once method is used in a transform
     #[inline]
-    pub fn ancestor(&self, levels: usize) -> Option<Parent<'a>> {
+    pub fn ancestor(&self, levels: usize) -> Option<Ancestor<'a>> {
         self.stack.get(self.stack.len() - levels).copied()
     }
 
     #[inline]
-    pub fn push_stack(&mut self, parent: Parent<'a>) {
+    pub fn push_stack(&mut self, parent: Ancestor<'a>) {
         self.stack.push(parent);
     }
 
@@ -104,7 +104,7 @@ impl<'a> TraverseCtx<'a> {
     }
 
     #[inline]
-    pub fn replace_stack(&mut self, parent: Parent<'a>) {
+    pub fn replace_stack(&mut self, parent: Ancestor<'a>) {
         let index = self.stack.len() - 1;
         self.stack[index] = parent;
     }

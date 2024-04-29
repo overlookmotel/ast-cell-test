@@ -7,7 +7,7 @@ mod print;
 mod traverse;
 mod visit;
 use ast::{
-    traversable::{Expression, Parent, UnaryExpression},
+    traversable::{Ancestor, Expression, UnaryExpression},
     BinaryOperator, TraversableField, UnaryOperator,
 };
 use cell::{SharedBox, Token};
@@ -42,7 +42,7 @@ impl<'a> Traverse<'a> for TransformTypeof {
         tk: &mut Token,
     ) {
         if unary_expr.operator(tk) == UnaryOperator::Typeof {
-            if let Parent::BinaryExpressionLeft(bin_expr) = ctx.parent() {
+            if let Ancestor::BinaryExpressionLeft(bin_expr) = ctx.parent() {
                 if matches!(
                     bin_expr.operator(tk),
                     BinaryOperator::Equality | BinaryOperator::StrictEquality
@@ -67,7 +67,7 @@ impl<'a> Traverse<'a> for TransformBananas {
         tk: &mut Token,
     ) {
         if unary_expr.operator(tk) == UnaryOperator::Typeof {
-            if let Parent::BinaryExpressionLeft(bin_expr) = ctx.parent() {
+            if let Ancestor::BinaryExpressionLeft(bin_expr) = ctx.parent() {
                 if matches!(
                     bin_expr.operator(tk),
                     BinaryOperator::Equality | BinaryOperator::StrictEquality

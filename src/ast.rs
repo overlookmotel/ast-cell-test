@@ -132,9 +132,9 @@ pub mod traversable {
     pub use super::traversable_statement::Statement;
     pub use super::traversable_string_literal::StringLiteral;
     pub use super::traversable_unary_expression::UnaryExpression;
+    pub use super::Ancestor;
     pub use super::Orphan;
     pub use super::TraversableAstBuilder as AstBuilder;
-    pub use super::TraversableParent as Parent;
 }
 
 /// Macro to assert equivalence in size and alignment between standard and traversable types
@@ -363,7 +363,7 @@ mod traversable_program {
     ) {
         traverser.enter_program(node, ctx, tk);
 
-        ctx.push_stack(TraversableParent::ProgramBody(node));
+        ctx.push_stack(Ancestor::ProgramBody(node));
         // Need to read `len()` on each turn of the loop, as `visit_statement` (or a child of it)
         // could add more nodes to the `Vec`
         let mut index = 0;
@@ -504,7 +504,7 @@ mod traversable_expression_statement {
     ) {
         traverser.enter_expression_statement(node, ctx, tk);
 
-        ctx.push_stack(TraversableParent::ExpressionStatementExpression(node));
+        ctx.push_stack(Ancestor::ExpressionStatementExpression(node));
         walk_expression(traverser, node.expression(tk), ctx, tk);
         ctx.pop_stack();
 
@@ -784,9 +784,9 @@ mod traversable_binary_expression {
     ) {
         traverser.enter_binary_expression(node, ctx, tk);
 
-        ctx.push_stack(TraversableParent::BinaryExpressionLeft(node));
+        ctx.push_stack(Ancestor::BinaryExpressionLeft(node));
         walk_expression(traverser, node.left(tk), ctx, tk);
-        ctx.replace_stack(TraversableParent::BinaryExpressionRight(node));
+        ctx.replace_stack(Ancestor::BinaryExpressionRight(node));
         walk_expression(traverser, node.right(tk), ctx, tk);
         ctx.pop_stack();
 
@@ -907,7 +907,7 @@ mod traversable_unary_expression {
     ) {
         traverser.enter_unary_expression(node, ctx, tk);
 
-        ctx.push_stack(TraversableParent::UnaryExpressionArgument(node));
+        ctx.push_stack(Ancestor::UnaryExpressionArgument(node));
         walk_expression(traverser, node.argument(tk), ctx, tk);
         ctx.pop_stack();
 
@@ -928,12 +928,12 @@ pub enum UnaryOperator {
     Delete = 6,
 }
 
-/// Parent type used in traversable AST.
+/// Ancestor type used in traversable AST.
 ///
 /// Encodes both the type of the parent, and child's location in the parent.
 /// i.e. variants for `BinaryExpressionLeft` and `BinaryExpressionRight`, not just `BinaryExpression`.
 #[derive(Clone, Copy)]
-pub enum TraversableParent<'a> {
+pub enum Ancestor<'a> {
     ProgramBody(SharedBox<'a, traversable::Program<'a>>),
     ExpressionStatementExpression(SharedBox<'a, traversable::ExpressionStatement<'a>>),
     BinaryExpressionLeft(SharedBox<'a, traversable::BinaryExpression<'a>>),
