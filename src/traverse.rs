@@ -110,8 +110,8 @@ impl<'a> TraverseCtx<'a> {
     }
 }
 
+#[allow(unused_variables)]
 pub trait Traverse<'a> {
-    #[allow(unused_variables)]
     fn enter_program(
         &mut self,
         program: SharedBox<'a, TraversableProgram<'a>>,
@@ -119,7 +119,6 @@ pub trait Traverse<'a> {
         tk: &mut Token,
     ) {
     }
-    #[allow(unused_variables)]
     fn exit_program(
         &mut self,
         program: SharedBox<'a, TraversableProgram<'a>>,
@@ -128,12 +127,9 @@ pub trait Traverse<'a> {
     ) {
     }
 
-    #[allow(unused_variables)]
     fn enter_statement(&mut self, stmt: Statement<'a>, ctx: &TraverseCtx<'a>, tk: &mut Token) {}
-    #[allow(unused_variables)]
     fn exit_statement(&mut self, stmt: Statement<'a>, ctx: &TraverseCtx<'a>, tk: &mut Token) {}
 
-    #[allow(unused_variables)]
     fn enter_expression_statement(
         &mut self,
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
@@ -141,7 +137,6 @@ pub trait Traverse<'a> {
         tk: &mut Token,
     ) {
     }
-    #[allow(unused_variables)]
     fn exit_expression_statement(
         &mut self,
         expr_stmt: SharedBox<'a, ExpressionStatement<'a>>,
@@ -150,12 +145,9 @@ pub trait Traverse<'a> {
     ) {
     }
 
-    #[allow(unused_variables)]
     fn enter_expression(&mut self, expr: Expression<'a>, ctx: &TraverseCtx<'a>, tk: &mut Token) {}
-    #[allow(unused_variables)]
     fn exit_expression(&mut self, expr: Expression<'a>, ctx: &TraverseCtx<'a>, tk: &mut Token) {}
 
-    #[allow(unused_variables)]
     fn visit_identifier_reference(
         &mut self,
         id: SharedBox<'a, IdentifierReference<'a>>,
@@ -164,7 +156,6 @@ pub trait Traverse<'a> {
     ) {
     }
 
-    #[allow(unused_variables)]
     fn visit_string_literal(
         &mut self,
         str_lit: SharedBox<'a, StringLiteral<'a>>,
@@ -173,7 +164,6 @@ pub trait Traverse<'a> {
     ) {
     }
 
-    #[allow(unused_variables)]
     fn enter_binary_expression(
         &mut self,
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
@@ -181,7 +171,6 @@ pub trait Traverse<'a> {
         tk: &mut Token,
     ) {
     }
-    #[allow(unused_variables)]
     fn exit_binary_expression(
         &mut self,
         bin_expr: SharedBox<'a, BinaryExpression<'a>>,
@@ -190,7 +179,6 @@ pub trait Traverse<'a> {
     ) {
     }
 
-    #[allow(unused_variables)]
     fn enter_unary_expression(
         &mut self,
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
@@ -198,7 +186,6 @@ pub trait Traverse<'a> {
         tk: &mut Token,
     ) {
     }
-    #[allow(unused_variables)]
     fn exit_unary_expression(
         &mut self,
         unary_expr: SharedBox<'a, UnaryExpression<'a>>,
