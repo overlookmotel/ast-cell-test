@@ -1,10 +1,12 @@
+use oxc_allocator::Allocator;
+
 use crate::{
     ast::{
         traversable::{
             BinaryExpression, Expression, ExpressionStatement, IdentifierReference, Parent,
             Program as TraversableProgram, Statement, StringLiteral, UnaryExpression,
         },
-        Program,
+        Program, TraversableAstBuilder,
     },
     cell::{GCell, SharedBox, Token},
 };
@@ -15,13 +17,17 @@ use crate::{
 /// with interior mutability, allowing traversal in any direction (up or down).
 /// Once the transform is finished, caller can continue to use the standard version of the AST
 /// in the usual way, without interior mutability.
-pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program<'a>) {
+pub fn transform<'a, T: Traverse<'a>>(
+    transformer: &mut T,
+    program: &mut Program<'a>,
+    allocator: &'a Allocator,
+) {
     // Generate `Token` which transformer uses to access the AST.
     // SAFETY: We only create one token, and it never leaves this function.
     let mut token = unsafe { Token::new_unchecked() };
 
     // Create `TraverseCtx` which transformer uses to read ancestry
-    let mut ctx = TraverseCtx::new();
+    let mut ctx = TraverseCtx::new(allocator);
 
     // Convert AST to traversable version.
     // SAFETY: All standard and traversable AST types are mirrors of each other, with identical layouts.
@@ -47,13 +53,31 @@ pub fn transform<'a, T: Traverse<'a>>(transformer: &mut T, program: &mut Program
     // Therefore, the caller can now safely continue using the `&mut Statement` that they passed in.
 }
 
+/// Traverse context.
+///
+/// Passed to all AST visitor functions.
+///
+/// Provides ability to:
+/// * Query parent/ancestor of current node.
+/// * Create AST nodes via `ctx.ast`.
+/// * Allocate into arena via `ctx.alloc()`.
 pub struct TraverseCtx<'a> {
     stack: Vec<Parent<'a>>,
+    pub ast: TraversableAstBuilder<'a>,
 }
 
 impl<'a> TraverseCtx<'a> {
-    pub fn new() -> Self {
-        Self { stack: Vec::new() }
+    pub fn new(allocator: &'a Allocator) -> Self {
+        Self {
+            stack: Vec::new(),
+            ast: TraversableAstBuilder::new(allocator),
+        }
+    }
+
+    #[allow(dead_code)] // TODO: Remove this attr once method is used in a transform
+    #[inline]
+    pub fn alloc<T>(&self, node: T) -> SharedBox<'a, T> {
+        self.ast.alloc(node)
     }
 }
 

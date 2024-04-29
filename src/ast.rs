@@ -214,6 +214,11 @@ impl<'a> TraversableAstBuilder<'a> {
     pub fn new(allocator: &'a Allocator) -> Self {
         Self { allocator }
     }
+
+    #[inline]
+    pub fn alloc<T>(&self, node: T) -> SharedBox<'a, T> {
+        self.allocator.galloc(node)
+    }
 }
 
 /// Trait for traversable struct fields

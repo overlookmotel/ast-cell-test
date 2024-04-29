@@ -17,10 +17,17 @@ use visit::Visit;
 
 fn main() {
     let alloc = Allocator::default();
-    let program = parser::parse(&alloc);
-    println!("before: {}", Printer::print(program));
 
-    transform(&mut TransformTypeof, program);
+    let program = parser::parse(&alloc);
+    println!("> TransformTypeof");
+    println!("before: {}", Printer::print(program));
+    transform(&mut TransformTypeof, program, &alloc);
+    println!("after: {}", Printer::print(program));
+
+    let program = parser::parse(&alloc);
+    println!("> TransformBananas");
+    println!("before: {}", Printer::print(program));
+    transform(&mut TransformBananas, program, &alloc);
     println!("after: {}", Printer::print(program));
 }
 
@@ -49,6 +56,36 @@ impl<'a> Traverse<'a> for TransformTypeof {
     }
 }
 
+/// Transformer for `typeof x === 'y'` to `typeof x === +bananas`
+struct TransformBananas;
+
+impl<'a> Traverse<'a> for TransformBananas {
+    fn exit_unary_expression(
+        &mut self,
+        unary_expr: SharedBox<'a, UnaryExpression<'a>>,
+        ctx: &TraverseCtx<'a>,
+        tk: &mut Token,
+    ) {
+        if unary_expr.operator(tk) == UnaryOperator::Typeof {
+            if let Parent::BinaryExpressionLeft(bin_expr) = ctx.parent() {
+                if matches!(
+                    bin_expr.operator(tk),
+                    BinaryOperator::Equality | BinaryOperator::StrictEquality
+                ) && matches!(bin_expr.right(tk), Expression::StringLiteral(_))
+                {
+                    bin_expr.replace_right(
+                        ctx.ast.unary_expression(
+                            UnaryOperator::UnaryPlus,
+                            ctx.ast.identifier_reference("bananas"),
+                        ),
+                        tk,
+                    );
+                }
+            }
+        }
+    }
+}
+
 // Run these tests under Miri to ensure no UB in transmute between standard and traversable ASTs
 #[cfg(test)]
 mod tests {
@@ -58,7 +95,7 @@ mod tests {
     fn transform_traversable_ast() {
         let alloc = Allocator::default();
         let program = parser::parse(&alloc);
-        transform(&mut TransformTypeof, program);
+        transform(&mut TransformTypeof, program, &alloc);
     }
 
     #[test]
@@ -69,7 +106,7 @@ mod tests {
 
         let alloc = Allocator::default();
         let program = parser::parse(&alloc);
-        transform(&mut TransformTypeof, program);
+        transform(&mut TransformTypeof, program, &alloc);
 
         let stmt = program.body.first_mut().unwrap();
         #[allow(irrefutable_let_patterns)]
