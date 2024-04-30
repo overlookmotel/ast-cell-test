@@ -291,32 +291,21 @@ mod traversable_program {
         }
 
         /// Replace statement at `index` of `Program` body, and return previous value.
+        /// # Panic
+        /// Panics if `index` is out of bounds.
         pub fn replace_body_stmt(
             &'a self,
             index: usize,
             stmt: Orphan<traversable::Statement<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Statement<'a>> {
-            // Unsafe code here is a workaround for `oxc_allocator::Vec` not implementing `IndexMut`.
-            // `bumpalo::collections::Vec` implements `IndexMut`, so `oxc_allocator::Vec` could too.
-            // Currently code here is sound for `Program`, as `Program` cannot be in `Vec` of statements.
-            // But for other types, it would not be sound.
-            // e.g. `BlockStatement::body` contains statements, and we are unable to prevent circularity,
-            // so a `BlockStatement`'s body `Vec` could contain itself.
-            // As this stands, in such a case we would obtain an immut ref and a mut ref to same node
-            // simultaneously, which violates the aliasing rules.
-            // If `Vec` was `IndexMut`, I think can do this instead:
-            // ```
-            // let old_stmt = std::mem::replace(&mut self.borrow_mut(tk).body[index], GCell::new(stmt.inner()))
-            // let old_stmt = *old_stmt.borrow(tk);
-            // return unsafe { Orphan::new(old_stmt) };
-            // ```
-            // i.e. we replace the cell itself, rather than the *contents* of the cell.
-            // TODO: Make `Vec` impl `IndexMut` and replace this dodgy unsafe code with the above.
-            assert!(index < self.borrow(tk).body.len());
-            // SAFETY: We checked `index` is in bounds.
-            let item = unsafe { &*self.borrow(tk).body.as_ptr().add(index) };
-            let old_stmt = item.replace(stmt.inner(), tk);
+            let item = self
+                .borrow_mut(tk)
+                .body
+                .get_mut(index)
+                .expect("Out of bounds vec access");
+            let old_stmt = std::mem::replace(item, GCell::new(stmt.inner()));
+            let old_stmt = old_stmt.into_inner();
             // SAFETY: We have removed `old_stmt` from the AST
             unsafe { Orphan::new(old_stmt) }
         }
@@ -342,16 +331,24 @@ mod traversable_program {
     impl<'a> TraversableField<'a, traversable::Statement<'a>> for ProgramBodyStmt<'a> {
         #[inline]
         fn get(&self, tk: &Token) -> traversable::Statement<'a> {
-            assert!(self.index < self.program.borrow(tk).body.len());
-            let item = unsafe { &*self.program.borrow(tk).body.as_ptr().add(self.index) };
+            let item = self
+                .program
+                .borrow(tk)
+                .body
+                .get(self.index)
+                .expect("Out of bounds vec access");
             *item.borrow(tk)
         }
 
         #[inline]
         fn set(&self, stmt: traversable::Statement<'a>, tk: &mut Token) {
-            assert!(self.index < self.program.borrow(tk).body.len());
-            let item = unsafe { &*self.program.borrow(tk).body.as_ptr().add(self.index) };
-            *item.borrow_mut(tk) = stmt;
+            let item = self
+                .program
+                .borrow_mut(tk)
+                .body
+                .get_mut(self.index)
+                .expect("Out of bounds vec access");
+            *item = GCell::new(stmt);
         }
     }
 
