@@ -240,6 +240,65 @@ impl<T> From<T> for GCell<T> {
 
 // `ghost_cell` crate's `as_tuple_of_cells` and `from_tuple_of_cells` omitted here as not useful
 
+// ----------------------------------------------------------------------------
+// New code
+// ----------------------------------------------------------------------------
+
+impl<T> GCell<T> {
+    /// Extend lifetime of a `SharedBox` to `'a`.
+    /// SAFETY:
+    /// Caller must ensure the data pointer to does live this long.
+    pub unsafe fn extend_lifetime<'a>(&self) -> &'a GCell<T> {
+        std::mem::transmute(self)
+    }
+}
+
+impl<T: Sized> GCell<T> {
+    /// Swap the contents of two `SharedBox`s.
+    #[inline]
+    #[allow(dead_code)]
+    #[allow(unused_variables)] // For `tk`
+    pub fn swap(&self, other: &Self, tk: &mut Token) {
+        // Here we break out of `GCell`'s usual constraints and mutate the contents of 2 cells
+        // at the same time.
+        // This is only safe to do because we do a runtime check that the pointers don't alias.
+        let self_ptr = self.as_ptr();
+        let other_ptr = other.as_ptr();
+
+        // Exit if the pointers are the same - swapping is a no-op
+        if self_ptr == other_ptr {
+            return;
+        }
+
+        // It could be better to convert the 2 pointers to `&mut` refs and use `std::mem::swap`.
+        // However, I'm not sure of the aliasing semantics. We can check that the pointers don't
+        // point to same place, but still one could be the parent/ancestor of the other.
+        // That might be a violation of the aliasing rules, as usually having a `&mut` ref
+        // to the parent would preclude also getting a `&mut` ref to its child.
+        // So I've played it safe and used raw pointers, to avoid this potential danger.
+        //
+        // https://doc.rust-lang.org/std/ptr/fn.swap_nonoverlapping.html says:
+        // "The operation is “untyped” in the sense that data may be uninitialized
+        // or otherwise violate the requirements of `T`."
+        // That would imply that aliasing rules don't apply, beyond the safety invariant that
+        // the two items can't overlap in memory.
+        //
+        // TODO: Figure out if can use `&mut`s instead, and whether that's advantageous.
+
+        // SAFETY:
+        // We have checked that `self` and `other` don't point to same location.
+        // The `Sized` bound on `T` ensures we're not dealing with slices, which could overlap
+        // even if pointers to start of the 2 slices aren't the same.
+        // This function takes a `&mut Token`, which guarantees no other references exist to
+        // any data in the set. So there can can be no references to either `self` or `other`.
+        // Both pointers are created from references to `GCell<T>`s, and are therefore valid for
+        // reads and writes of a `T`. For the same reason, they are properly aligned.
+        unsafe {
+            std::ptr::swap_nonoverlapping(self_ptr, other_ptr, 1);
+        };
+    }
+}
+
 // SAFETY: `GhostCell` is `Send` + `Sync`, so `GCell` can be too
 unsafe impl<T: ?Sized + Send> Send for GCell<T> {}
 unsafe impl<T: ?Sized + Send + Sync> Sync for GCell<T> {}

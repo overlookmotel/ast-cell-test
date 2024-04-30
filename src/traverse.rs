@@ -3,8 +3,9 @@ use oxc_allocator::Allocator;
 use crate::{
     ast::{
         traversable::{
-            Ancestor, BinaryExpression, Expression, ExpressionStatement, IdentifierReference,
-            Program as TraversableProgram, Statement, StringLiteral, UnaryExpression,
+            Ancestor, BinaryExpression, Directive, Expression, ExpressionStatement,
+            IdentifierReference, Program as TraversableProgram, Statement, StringLiteral,
+            UnaryExpression,
         },
         traverse, Program, TraversableAstBuilder,
     },
@@ -121,6 +122,21 @@ pub trait Traverse<'a> {
     fn exit_program(
         &mut self,
         program: SharedBox<'a, TraversableProgram<'a>>,
+        ctx: &TraverseCtx<'a>,
+        tk: &mut Token,
+    ) {
+    }
+
+    fn enter_directive(
+        &mut self,
+        expr_stmt: SharedBox<'a, Directive<'a>>,
+        ctx: &TraverseCtx<'a>,
+        tk: &mut Token,
+    ) {
+    }
+    fn exit_directive(
+        &mut self,
+        expr_stmt: SharedBox<'a, Directive<'a>>,
         ctx: &TraverseCtx<'a>,
         tk: &mut Token,
     ) {

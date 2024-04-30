@@ -117,7 +117,7 @@
 use oxc_allocator::{Allocator, Box, Vec};
 
 use crate::{
-    cell::{GCell, SharedBox, Token},
+    cell::{GCell, SharedBox, SharedVec, Token},
     traverse::{Traverse, TraverseCtx},
 };
 
@@ -125,6 +125,7 @@ use crate::{
 #[allow(unused_imports)]
 pub mod traversable {
     pub use super::traversable_binary_expression::BinaryExpression;
+    pub use super::traversable_directive::Directive;
     pub use super::traversable_expression::Expression;
     pub use super::traversable_expression_statement::ExpressionStatement;
     pub use super::traversable_identifier_reference::IdentifierReference;
@@ -224,7 +225,7 @@ impl<'a> TraversableAstBuilder<'a> {
     }
 }
 
-/// Trait for traversable struct fields
+/// Trait for traversable struct fields which are `Copy`
 pub trait TraversableField<'a, T>: Sized {
     fn get(&self, tk: &Token) -> T;
     fn set(&self, left: T, tk: &mut Token);
@@ -237,6 +238,7 @@ pub trait TraversableField<'a, T>: Sized {
     }
 }
 
+/// Traversal entry point.
 pub fn traverse<'a, T: Traverse<'a>>(
     traverser: &mut T,
     program: SharedBox<'a, traversable::Program<'a>>,
@@ -253,6 +255,7 @@ pub fn traverse<'a, T: Traverse<'a>>(
 #[derive(Debug)]
 #[repr(C)]
 pub struct Program<'a> {
+    pub directives: Vec<'a, Directive<'a>>,
     pub body: Vec<'a, Statement<'a>>,
 }
 
@@ -261,14 +264,49 @@ mod traversable_program {
 
     #[repr(C)]
     pub struct Program<'a> {
+        // `Directive` is a struct, so we use `SharedVec`
+        directives: SharedVec<'a, traversable::Directive<'a>>,
         // `Statement` is an enum so we can just use `Vec` instead of `SharedVec`.
-        // For structs, `SharedVec` is still required e.g. `SharedVec<BindingProperty>`.
+        // Note the different implementations for the methods relating to the 2 below.
         body: Vec<'a, traversable::Statement<'a>>,
     }
 
     link_types!(super::Program, Program);
 
     impl<'a> Program<'a> {
+        /// Get length of directives.
+        pub fn directives_len(&self) -> usize {
+            self.directives.len()
+        }
+
+        /// Get directives item.
+        /// # Panic
+        /// Panics if `index` is out of bounds.
+        pub fn directives_item(&self, index: usize) -> SharedBox<'a, traversable::Directive<'a>> {
+            let item_ref = &self.directives[index];
+            // Extend lifetime to 'a.
+            // SAFETY: Item is stored in arena. Even if vec reallocates, the arena never reclaims or
+            // overwrites memory, so ref will remain a valid pointer to a `Directive` for 'a.
+            // TODO @overlookmotel: While I believe this is sound, probably could avoid the need for
+            // unsafe code here by changing the lifetimes on `Traverse` trait methods and `walk_*` fns.
+            unsafe { item_ref.extend_lifetime() }
+        }
+
+        /// Get directives item.
+        /// Returns `None` if `index` is out of bounds.
+        pub fn directives_item_get(
+            &self,
+            index: usize,
+        ) -> Option<SharedBox<'a, traversable::Directive<'a>>> {
+            let item_ref = self.directives.get(index);
+            // Extend lifetime to 'a.
+            // SAFETY: Item is stored in arena. Even if vec reallocates, the arena never reclaims or
+            // overwrites memory, so ref will remain a valid pointer to a `Directive` for 'a.
+            // TODO @overlookmotel: While I believe this is sound, probably could avoid the need for
+            // unsafe code here by changing the lifetimes on `Traverse` trait methods and `walk_*` fns.
+            item_ref.map(|item_ref| unsafe { item_ref.extend_lifetime() })
+        }
+
         /// Get length of body.
         pub fn body_len(&self) -> usize {
             self.body.len()
@@ -291,6 +329,59 @@ mod traversable_program {
     // TODO: We could probably abstract much of this into methods on a `SharedVec` type.
     // TODO: Implement more `Vec` methods.
     impl<'a> GCell<Program<'a>> {
+        /// Convenience method for getting directives of body from a ref.
+        pub fn directives_len(&self, tk: &Token) -> usize {
+            self.borrow(tk).directives_len()
+        }
+
+        /// Convenience method for getting directives item from a ref.
+        /// # Panic
+        /// Panics if `index` is out of bounds.
+        #[inline]
+        pub fn directives_item(
+            &self,
+            index: usize,
+            tk: &Token,
+        ) -> SharedBox<'a, traversable::Directive<'a>> {
+            self.borrow(tk).directives_item(index)
+        }
+
+        /// Convenience method for getting directives item from a ref.
+        /// Returns `None` if `index` is out of bounds.
+        #[inline]
+        pub fn directives_item_get(
+            &self,
+            index: usize,
+            tk: &Token,
+        ) -> Option<SharedBox<'a, traversable::Directive<'a>>> {
+            self.borrow(tk).directives_item_get(index)
+        }
+
+        /// Replace value at `index` of `Program` body, and return previous value.
+        /// # Panic
+        /// Panics if `index` is out of bounds.
+        pub fn replace_directives_item(
+            &self,
+            index: usize,
+            node: Orphan<traversable::Directive<'a>>,
+            tk: &mut Token,
+        ) -> Orphan<traversable::Directive<'a>> {
+            let item = self
+                .borrow_mut(tk)
+                .directives
+                .get_mut(index)
+                .expect("Out of bounds vec access");
+            let old = std::mem::replace(item, GCell::new(node.inner()));
+            // SAFETY: We have removed `old` from the AST
+            unsafe { Orphan::new(old.into_inner()) }
+        }
+
+        /// Push an item to end of directives.
+        pub fn push_directives(&self, item: Orphan<traversable::Directive<'a>>, tk: &mut Token) {
+            let item = GCell::from(item.inner());
+            self.borrow_mut(tk).directives.push(item);
+        }
+
         /// Convenience method for getting length of body from a ref.
         pub fn body_len(&self, tk: &Token) -> usize {
             self.borrow(tk).body_len()
@@ -380,7 +471,20 @@ mod traversable_program {
     ) {
         traverser.enter_program(node, ctx, tk);
 
-        ctx.push_stack(Ancestor::ProgramBody(node));
+        ctx.push_stack(Ancestor::ProgramDirectives(node));
+        // Need to check bounds on each turn of the loop, as `walk_directive` (or a child of it)
+        // could add more nodes to the `Vec`, or remove them
+        let mut index = 0;
+        loop {
+            let item = node.directives_item_get(index, tk);
+            let Some(item) = item else {
+                break;
+            };
+            walk_directive(traverser, item, ctx, tk);
+            index += 1;
+        }
+
+        ctx.replace_stack(Ancestor::ProgramBody(node));
         // Need to check bounds on each turn of the loop, as `walk_statement` (or a child of it)
         // could add more nodes to the `Vec`, or remove them
         let mut index = 0;
@@ -398,6 +502,87 @@ mod traversable_program {
     }
 }
 use traversable_program::walk_program;
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Directive<'a> {
+    pub expression: Box<'a, StringLiteral<'a>>,
+}
+
+mod traversable_directive {
+    use super::*;
+
+    #[repr(C)]
+    pub struct Directive<'a> {
+        expression: SharedBox<'a, traversable::StringLiteral<'a>>,
+    }
+
+    link_types!(super::Directive, Directive);
+
+    // NB: These methods are different from `ExpressionStatement::expression` because here the content
+    // of the box is a struct not an enum.
+    impl<'a> Directive<'a> {
+        pub fn new_in(
+            expression: Orphan<traversable::StringLiteral<'a>>,
+            alloc: &'a Allocator,
+        ) -> Orphan<Directive<'a>> {
+            let node = Self {
+                expression: alloc.galloc(expression.inner()),
+            };
+            // SAFETY: Node is newly created so by definition is not yet attached to AST
+            unsafe { Orphan::new(node) }
+        }
+
+        pub fn expression(&self) -> SharedBox<'a, traversable::StringLiteral<'a>> {
+            self.expression
+        }
+    }
+
+    impl<'a> GCell<Directive<'a>> {
+        /// Convenience method for getting `expression` from a ref.
+        #[inline]
+        pub fn expression(&self, tk: &Token) -> SharedBox<'a, traversable::StringLiteral<'a>> {
+            self.borrow(tk).expression
+        }
+
+        /// Replace value of `expression` field, and return previous value.
+        pub fn replace_expression(
+            &self,
+            node: Orphan<traversable::StringLiteral<'a>>,
+            tk: &mut Token,
+        ) -> Orphan<traversable::StringLiteral<'a>> {
+            let old_ref = self.borrow(tk).expression;
+            let old = old_ref.replace(node.inner(), tk);
+            unsafe { Orphan::new(old) }
+        }
+    }
+
+    impl<'a> TraversableAstBuilder<'a> {
+        #[inline]
+        pub fn directive(
+            &self,
+            expression: Orphan<traversable::StringLiteral<'a>>,
+        ) -> Orphan<Directive<'a>> {
+            Directive::new_in(expression, self.allocator)
+        }
+    }
+
+    pub fn walk_directive<'a, T: Traverse<'a>>(
+        traverser: &mut T,
+        node: SharedBox<'a, Directive<'a>>,
+        ctx: &mut TraverseCtx<'a>,
+        tk: &mut Token,
+    ) {
+        traverser.enter_directive(node, ctx, tk);
+
+        ctx.push_stack(Ancestor::DirectiveExpression(node));
+        traverser.visit_string_literal(node.borrow(tk).expression, ctx, tk);
+        ctx.pop_stack();
+
+        traverser.exit_directive(node, ctx, tk);
+    }
+}
+use traversable_directive::walk_directive;
 
 #[derive(Debug)]
 #[repr(C, u8)]
@@ -950,7 +1135,9 @@ pub enum UnaryOperator {
 /// i.e. variants for `BinaryExpressionLeft` and `BinaryExpressionRight`, not just `BinaryExpression`.
 #[derive(Clone, Copy)]
 pub enum Ancestor<'a> {
+    ProgramDirectives(SharedBox<'a, traversable::Program<'a>>),
     ProgramBody(SharedBox<'a, traversable::Program<'a>>),
+    DirectiveExpression(SharedBox<'a, traversable::Directive<'a>>),
     ExpressionStatementExpression(SharedBox<'a, traversable::ExpressionStatement<'a>>),
     BinaryExpressionLeft(SharedBox<'a, traversable::BinaryExpression<'a>>),
     BinaryExpressionRight(SharedBox<'a, traversable::BinaryExpression<'a>>),

@@ -36,9 +36,10 @@ pub fn parse(alloc: &Allocator) -> &mut Program {
     let stmt = Statement::ExpressionStatement(expr_stmt);
 
     // `typeof foo === 'object'` (as program)
+    let directives = Vec::new_in(alloc);
     let mut body = Vec::new_in(alloc);
     body.push(stmt);
-    let program = alloc.alloc(Program { body });
+    let program = alloc.alloc(Program { directives, body });
 
     program
 }
