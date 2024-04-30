@@ -269,30 +269,53 @@ mod traversable_program {
     link_types!(super::Program, Program);
 
     impl<'a> Program<'a> {
+        /// Get length of body.
         pub fn body_len(&self) -> usize {
             self.body.len()
         }
 
+        /// Get body item.
+        /// # Panic
+        /// Panics if `index` is out of bounds.
         pub fn body_item(&self, index: usize) -> traversable::Statement<'a> {
             self.body[index]
+        }
+
+        /// Get body item.
+        /// Returns `None` if `index` is out of bounds.
+        pub fn body_item_get(&self, index: usize) -> Option<traversable::Statement<'a>> {
+            self.body.get(index).copied()
         }
     }
 
     // TODO: We could probably abstract much of this into methods on a `SharedVec` type.
     // TODO: Implement more `Vec` methods.
     impl<'a> GCell<Program<'a>> {
-        /// Convenience method for getting `body.len()` from a ref.
+        /// Convenience method for getting length of body from a ref.
         pub fn body_len(&self, tk: &Token) -> usize {
-            self.borrow(tk).body.len()
+            self.borrow(tk).body_len()
         }
 
-        /// Convenience method for getting a body statement from a ref.
+        /// Convenience method for getting body item from a ref.
+        /// # Panic
+        /// Panics if `index` is out of bounds.
         #[inline]
         pub fn body_item(&self, index: usize, tk: &Token) -> traversable::Statement<'a> {
-            self.borrow(tk).body[index]
+            self.borrow(tk).body_item(index)
         }
 
-        /// Replace value at `index` of `Program` body, and return previous value.
+        /// Convenience method for getting body item from a ref.
+        /// Returns `None` if `index` is out of bounds.
+        #[inline]
+        pub fn body_item_get(
+            &self,
+            index: usize,
+            tk: &Token,
+        ) -> Option<traversable::Statement<'a>> {
+            self.borrow(tk).body_item_get(index)
+        }
+
+        /// Replace body item, and return previous value.
         /// # Panic
         /// Panics if `index` is out of bounds.
         pub fn replace_body_item(
@@ -311,6 +334,7 @@ mod traversable_program {
             unsafe { Orphan::new(old) }
         }
 
+        /// Get swappable reference to a body item.
         #[inline]
         pub fn body_item_ref(&'a self, index: usize) -> ProgramBodyItem<'a> {
             ProgramBodyItem {
@@ -319,6 +343,7 @@ mod traversable_program {
             }
         }
 
+        /// Push an item to end of body.
         pub fn push_body(&self, item: Orphan<traversable::Statement<'a>>, tk: &mut Token) {
             self.borrow_mut(tk).body.push(item.inner());
         }
@@ -332,12 +357,7 @@ mod traversable_program {
     impl<'a> TraversableField<'a, traversable::Statement<'a>> for ProgramBodyItem<'a> {
         #[inline]
         fn get(&self, tk: &Token) -> traversable::Statement<'a> {
-            *self
-                .program
-                .borrow(tk)
-                .body
-                .get(self.index)
-                .expect("Out of bounds vec access")
+            self.program.borrow(tk).body[self.index]
         }
 
         #[inline]
@@ -361,12 +381,15 @@ mod traversable_program {
         traverser.enter_program(node, ctx, tk);
 
         ctx.push_stack(Ancestor::ProgramBody(node));
-        // Need to read `len()` on each turn of the loop, as `visit_statement` (or a child of it)
-        // could add more nodes to the `Vec`
+        // Need to check bounds on each turn of the loop, as `walk_statement` (or a child of it)
+        // could add more nodes to the `Vec`, or remove them
         let mut index = 0;
-        while index < node.body_len(tk) {
-            let node = node.body_item(index, tk);
-            walk_statement(traverser, node, ctx, tk);
+        loop {
+            let item = node.body_item_get(index, tk);
+            let Some(item) = item else {
+                break;
+            };
+            walk_statement(traverser, item, ctx, tk);
             index += 1;
         }
         ctx.pop_stack();
