@@ -282,13 +282,13 @@ mod traversable_program {
     // TODO: Implement more `Vec` methods.
     impl<'a> GCell<Program<'a>> {
         /// Convenience method for getting `body.len()` from a ref.
-        pub fn body_len(&'a self, tk: &Token) -> usize {
+        pub fn body_len(&self, tk: &Token) -> usize {
             self.borrow(tk).body.len()
         }
 
         /// Convenience method for getting a body statement from a ref.
         #[inline]
-        pub fn body_item(&'a self, index: usize, tk: &Token) -> traversable::Statement<'a> {
+        pub fn body_item(&self, index: usize, tk: &Token) -> traversable::Statement<'a> {
             self.borrow(tk).body[index]
         }
 
@@ -296,7 +296,7 @@ mod traversable_program {
         /// # Panic
         /// Panics if `index` is out of bounds.
         pub fn replace_body_item(
-            &'a self,
+            &self,
             index: usize,
             node: Orphan<traversable::Statement<'a>>,
             tk: &mut Token,
@@ -319,7 +319,7 @@ mod traversable_program {
             }
         }
 
-        pub fn push_body(&'a self, item: Orphan<traversable::Statement<'a>>, tk: &mut Token) {
+        pub fn push_body(&self, item: Orphan<traversable::Statement<'a>>, tk: &mut Token) {
             self.borrow_mut(tk).body.push(item.inner());
         }
     }
@@ -447,13 +447,13 @@ mod traversable_expression_statement {
     impl<'a> GCell<ExpressionStatement<'a>> {
         /// Convenience method for getting `expression` from a ref.
         #[inline]
-        pub fn expression(&'a self, tk: &Token) -> traversable::Expression<'a> {
+        pub fn expression(&self, tk: &Token) -> traversable::Expression<'a> {
             self.borrow(tk).expression
         }
 
         /// Replace value of `expression` field, and return previous value.
         pub fn replace_expression(
-            &'a self,
+            &self,
             node: Orphan<traversable::Expression<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Expression<'a>> {
@@ -677,29 +677,29 @@ mod traversable_binary_expression {
     impl<'a> GCell<BinaryExpression<'a>> {
         /// Convenience method for getting `left` from a ref.
         #[inline]
-        pub fn left(&'a self, tk: &Token) -> traversable::Expression<'a> {
+        pub fn left(&self, tk: &Token) -> traversable::Expression<'a> {
             self.borrow(tk).left
         }
 
         /// Convenience method for getting `right` from a ref.
         #[inline]
-        pub fn right(&'a self, tk: &Token) -> traversable::Expression<'a> {
+        pub fn right(&self, tk: &Token) -> traversable::Expression<'a> {
             self.borrow(tk).right
         }
 
         /// Convenience method for getting `operator` from a ref.
-        pub fn operator(&'a self, tk: &Token) -> BinaryOperator {
+        pub fn operator(&self, tk: &Token) -> BinaryOperator {
             self.borrow(tk).operator
         }
 
         /// Convenience method for setting `operator` from a ref.
-        pub fn set_operator(&'a self, value: BinaryOperator, tk: &mut Token) {
+        pub fn set_operator(&self, value: BinaryOperator, tk: &mut Token) {
             self.borrow_mut(tk).operator = value;
         }
 
         /// Replace value of `left` field, and return previous value.
         pub fn replace_left(
-            &'a self,
+            &self,
             node: Orphan<traversable::Expression<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Expression<'a>> {
@@ -710,7 +710,7 @@ mod traversable_binary_expression {
 
         /// Replace value of `right` field, and return previous value.
         pub fn replace_right(
-            &'a self,
+            &self,
             node: Orphan<traversable::Expression<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Expression<'a>> {
@@ -836,23 +836,23 @@ mod traversable_unary_expression {
     impl<'a> GCell<UnaryExpression<'a>> {
         /// Convenience method for getting `argument` from a ref.
         #[inline]
-        pub fn argument(&'a self, tk: &Token) -> traversable::Expression<'a> {
+        pub fn argument(&self, tk: &Token) -> traversable::Expression<'a> {
             self.borrow(tk).argument
         }
 
         /// Convenience method for getting `operator` from a ref.
-        pub fn operator(&'a self, tk: &Token) -> UnaryOperator {
+        pub fn operator(&self, tk: &Token) -> UnaryOperator {
             self.borrow(tk).operator
         }
 
         /// Convenience method for setting `operator` from a ref.
-        pub fn set_operator(&'a self, value: UnaryOperator, tk: &mut Token) {
+        pub fn set_operator(&self, value: UnaryOperator, tk: &mut Token) {
             self.borrow_mut(tk).operator = value;
         }
 
         /// Replace value of `argument` field, and return previous value.
         pub fn replace_argument(
-            &'a self,
+            &self,
             node: Orphan<traversable::Expression<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Expression<'a>> {
