@@ -273,7 +273,7 @@ mod traversable_program {
             self.body.len()
         }
 
-        pub fn body_stmt(&self, index: usize) -> traversable::Statement<'a> {
+        pub fn body_item(&self, index: usize) -> traversable::Statement<'a> {
             self.body[index]
         }
     }
@@ -288,48 +288,48 @@ mod traversable_program {
 
         /// Convenience method for getting a body statement from a ref.
         #[inline]
-        pub fn body_stmt(&'a self, index: usize, tk: &Token) -> traversable::Statement<'a> {
+        pub fn body_item(&'a self, index: usize, tk: &Token) -> traversable::Statement<'a> {
             self.borrow(tk).body[index]
         }
 
-        /// Replace statement at `index` of `Program` body, and return previous value.
+        /// Replace value at `index` of `Program` body, and return previous value.
         /// # Panic
         /// Panics if `index` is out of bounds.
-        pub fn replace_body_stmt(
+        pub fn replace_body_item(
             &'a self,
             index: usize,
-            stmt: Orphan<traversable::Statement<'a>>,
+            item: Orphan<traversable::Statement<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Statement<'a>> {
-            let item = self
+            let item_mut = self
                 .borrow_mut(tk)
                 .body
                 .get_mut(index)
                 .expect("Out of bounds vec access");
-            let old_stmt = std::mem::replace(item, stmt.inner());
-            // SAFETY: We have removed `old_stmt` from the AST
-            unsafe { Orphan::new(old_stmt) }
+            let old_item = std::mem::replace(item_mut, item.inner());
+            // SAFETY: We have removed `old_item` from the AST
+            unsafe { Orphan::new(old_item) }
         }
 
         #[inline]
-        pub fn body_stmt_ref(&'a self, index: usize) -> ProgramBodyStmt<'a> {
-            ProgramBodyStmt {
+        pub fn body_item_ref(&'a self, index: usize) -> ProgramBodyItem<'a> {
+            ProgramBodyItem {
                 program: self,
                 index,
             }
         }
 
-        pub fn push_body_stmt(&'a self, stmt: Orphan<traversable::Statement<'a>>, tk: &mut Token) {
-            self.borrow_mut(tk).body.push(stmt.inner());
+        pub fn push_body(&'a self, item: Orphan<traversable::Statement<'a>>, tk: &mut Token) {
+            self.borrow_mut(tk).body.push(item.inner());
         }
     }
 
-    pub struct ProgramBodyStmt<'a> {
+    pub struct ProgramBodyItem<'a> {
         program: SharedBox<'a, Program<'a>>,
         index: usize,
     }
 
-    impl<'a> TraversableField<'a, traversable::Statement<'a>> for ProgramBodyStmt<'a> {
+    impl<'a> TraversableField<'a, traversable::Statement<'a>> for ProgramBodyItem<'a> {
         #[inline]
         fn get(&self, tk: &Token) -> traversable::Statement<'a> {
             *self
@@ -341,14 +341,14 @@ mod traversable_program {
         }
 
         #[inline]
-        fn set(&self, stmt: traversable::Statement<'a>, tk: &mut Token) {
-            let item = self
+        fn set(&self, item: traversable::Statement<'a>, tk: &mut Token) {
+            let item_mut = self
                 .program
                 .borrow_mut(tk)
                 .body
                 .get_mut(self.index)
                 .expect("Out of bounds vec access");
-            *item = stmt;
+            *item_mut = item;
         }
     }
 
@@ -365,8 +365,8 @@ mod traversable_program {
         // could add more nodes to the `Vec`
         let mut index = 0;
         while index < node.body_len(tk) {
-            let stmt = node.body_stmt(index, tk);
-            walk_statement(traverser, stmt, ctx, tk);
+            let item = node.body_item(index, tk);
+            walk_statement(traverser, item, ctx, tk);
             index += 1;
         }
         ctx.pop_stack();
