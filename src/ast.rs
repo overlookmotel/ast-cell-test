@@ -298,17 +298,17 @@ mod traversable_program {
         pub fn replace_body_item(
             &'a self,
             index: usize,
-            item: Orphan<traversable::Statement<'a>>,
+            node: Orphan<traversable::Statement<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Statement<'a>> {
-            let item_mut = self
+            let item = self
                 .borrow_mut(tk)
                 .body
                 .get_mut(index)
                 .expect("Out of bounds vec access");
-            let old_item = std::mem::replace(item_mut, item.inner());
-            // SAFETY: We have removed `old_item` from the AST
-            unsafe { Orphan::new(old_item) }
+            let old = std::mem::replace(item, node.inner());
+            // SAFETY: We have removed `old` from the AST
+            unsafe { Orphan::new(old) }
         }
 
         #[inline]
@@ -341,14 +341,14 @@ mod traversable_program {
         }
 
         #[inline]
-        fn set(&self, item: traversable::Statement<'a>, tk: &mut Token) {
-            let item_mut = self
+        fn set(&self, node: traversable::Statement<'a>, tk: &mut Token) {
+            let item = self
                 .program
                 .borrow_mut(tk)
                 .body
                 .get_mut(self.index)
                 .expect("Out of bounds vec access");
-            *item_mut = item;
+            *item = node;
         }
     }
 
@@ -365,8 +365,8 @@ mod traversable_program {
         // could add more nodes to the `Vec`
         let mut index = 0;
         while index < node.body_len(tk) {
-            let item = node.body_item(index, tk);
-            walk_statement(traverser, item, ctx, tk);
+            let node = node.body_item(index, tk);
+            walk_statement(traverser, node, ctx, tk);
             index += 1;
         }
         ctx.pop_stack();
@@ -428,15 +428,15 @@ mod traversable_expression_statement {
     link_types!(super::ExpressionStatement, ExpressionStatement);
 
     impl<'a> ExpressionStatement<'a> {
-        pub fn new_stmt_in(
+        pub fn new_statement_in(
             expression: Orphan<traversable::Expression<'a>>,
             alloc: &'a Allocator,
         ) -> Orphan<traversable::Statement<'a>> {
-            let stmt = alloc.galloc(Self {
+            let node = alloc.galloc(Self {
                 expression: expression.inner(),
             });
             // SAFETY: Node is newly created so by definition is not yet attached to AST
-            unsafe { Orphan::new(traversable::Statement::ExpressionStatement(stmt)) }
+            unsafe { Orphan::new(traversable::Statement::ExpressionStatement(node)) }
         }
 
         pub fn expression(&self) -> traversable::Expression<'a> {
@@ -454,13 +454,12 @@ mod traversable_expression_statement {
         /// Replace value of `expression` field, and return previous value.
         pub fn replace_expression(
             &'a self,
-            expr: Orphan<traversable::Expression<'a>>,
+            node: Orphan<traversable::Expression<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Expression<'a>> {
-            let old_expression = self.expression(tk);
-            self.borrow_mut(tk).expression = expr.inner();
-            // SAFETY: We have removed `old_expression` from the AST
-            unsafe { Orphan::new(old_expression) }
+            let old = std::mem::replace(&mut self.borrow_mut(tk).expression, node.inner());
+            // SAFETY: We have removed `old` from the AST
+            unsafe { Orphan::new(old) }
         }
 
         #[inline]
@@ -478,8 +477,8 @@ mod traversable_expression_statement {
         }
 
         #[inline]
-        fn set(&self, expression: traversable::Expression<'a>, tk: &mut Token) {
-            self.0.borrow_mut(tk).expression = expression;
+        fn set(&self, node: traversable::Expression<'a>, tk: &mut Token) {
+            self.0.borrow_mut(tk).expression = node;
         }
     }
 
@@ -489,7 +488,7 @@ mod traversable_expression_statement {
             &self,
             expression: Orphan<traversable::Expression<'a>>,
         ) -> Orphan<traversable::Statement<'a>> {
-            ExpressionStatement::new_stmt_in(expression, self.allocator)
+            ExpressionStatement::new_statement_in(expression, self.allocator)
         }
     }
 
@@ -577,20 +576,20 @@ mod traversable_identifier_reference {
     link_types!(super::IdentifierReference, IdentifierReference);
 
     impl<'a> IdentifierReference<'a> {
-        pub fn new_expr_in(
+        pub fn new_expression_in(
             name: &'a str,
             alloc: &'a Allocator,
         ) -> Orphan<traversable::Expression<'a>> {
-            let expr = alloc.galloc(Self { name });
+            let node = alloc.galloc(Self { name });
             // SAFETY: Node is newly created so by definition is not yet attached to AST
-            unsafe { Orphan::new(traversable::Expression::Identifier(expr)) }
+            unsafe { Orphan::new(traversable::Expression::Identifier(node)) }
         }
     }
 
     impl<'a> TraversableAstBuilder<'a> {
         #[inline]
         pub fn identifier_reference(&self, name: &'a str) -> Orphan<traversable::Expression<'a>> {
-            IdentifierReference::new_expr_in(name, self.allocator)
+            IdentifierReference::new_expression_in(name, self.allocator)
         }
     }
 }
@@ -612,20 +611,20 @@ mod traversable_string_literal {
     link_types!(super::StringLiteral, StringLiteral);
 
     impl<'a> StringLiteral<'a> {
-        pub fn new_expr_in(
+        pub fn new_expression_in(
             value: &'a str,
             alloc: &'a Allocator,
         ) -> Orphan<traversable::Expression<'a>> {
-            let expr = alloc.galloc(Self { value });
+            let node = alloc.galloc(Self { value });
             // SAFETY: Node is newly created so by definition is not yet attached to AST
-            unsafe { Orphan::new(traversable::Expression::StringLiteral(expr)) }
+            unsafe { Orphan::new(traversable::Expression::StringLiteral(node)) }
         }
     }
 
     impl<'a> TraversableAstBuilder<'a> {
         #[inline]
         pub fn string_literal(&self, value: &'a str) -> Orphan<traversable::Expression<'a>> {
-            StringLiteral::new_expr_in(value, self.allocator)
+            StringLiteral::new_expression_in(value, self.allocator)
         }
     }
 }
@@ -651,19 +650,19 @@ mod traversable_binary_expression {
     link_types!(super::BinaryExpression, BinaryExpression);
 
     impl<'a> BinaryExpression<'a> {
-        pub fn new_expr_in(
+        pub fn new_expression_in(
             left: Orphan<traversable::Expression<'a>>,
             operator: BinaryOperator,
             right: Orphan<traversable::Expression<'a>>,
             alloc: &'a Allocator,
         ) -> Orphan<traversable::Expression<'a>> {
-            let expr = alloc.galloc(Self {
+            let node = alloc.galloc(Self {
                 left: left.inner(),
                 operator,
                 right: right.inner(),
             });
             // SAFETY: Node is newly created so by definition is not yet attached to AST
-            unsafe { Orphan::new(traversable::Expression::BinaryExpression(expr)) }
+            unsafe { Orphan::new(traversable::Expression::BinaryExpression(node)) }
         }
 
         pub fn left(&self) -> traversable::Expression<'a> {
@@ -694,32 +693,30 @@ mod traversable_binary_expression {
         }
 
         /// Convenience method for setting `operator` from a ref.
-        pub fn set_operator(&'a self, operator: BinaryOperator, tk: &mut Token) {
-            self.borrow_mut(tk).operator = operator;
+        pub fn set_operator(&'a self, value: BinaryOperator, tk: &mut Token) {
+            self.borrow_mut(tk).operator = value;
         }
 
         /// Replace value of `left` field, and return previous value.
         pub fn replace_left(
             &'a self,
-            expr: Orphan<traversable::Expression<'a>>,
+            node: Orphan<traversable::Expression<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Expression<'a>> {
-            let old_left = self.left(tk);
-            self.borrow_mut(tk).left = expr.inner();
-            // SAFETY: We have removed `old_left` from the AST
-            unsafe { Orphan::new(old_left) }
+            let old = std::mem::replace(&mut self.borrow_mut(tk).left, node.inner());
+            // SAFETY: We have removed `old` from the AST
+            unsafe { Orphan::new(old) }
         }
 
         /// Replace value of `right` field, and return previous value.
         pub fn replace_right(
             &'a self,
-            expr: Orphan<traversable::Expression<'a>>,
+            node: Orphan<traversable::Expression<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Expression<'a>> {
-            let old_right = self.right(tk);
-            self.borrow_mut(tk).right = expr.inner();
-            // SAFETY: We have removed `old_right` from the AST
-            unsafe { Orphan::new(old_right) }
+            let old = std::mem::replace(&mut self.borrow_mut(tk).right, node.inner());
+            // SAFETY: We have removed `old` from the AST
+            unsafe { Orphan::new(old) }
         }
 
         #[inline]
@@ -742,8 +739,8 @@ mod traversable_binary_expression {
         }
 
         #[inline]
-        fn set(&self, left: traversable::Expression<'a>, tk: &mut Token) {
-            self.0.borrow_mut(tk).left = left;
+        fn set(&self, node: traversable::Expression<'a>, tk: &mut Token) {
+            self.0.borrow_mut(tk).left = node;
         }
     }
 
@@ -756,8 +753,8 @@ mod traversable_binary_expression {
         }
 
         #[inline]
-        fn set(&self, right: traversable::Expression<'a>, tk: &mut Token) {
-            self.0.borrow_mut(tk).right = right;
+        fn set(&self, node: traversable::Expression<'a>, tk: &mut Token) {
+            self.0.borrow_mut(tk).right = node;
         }
     }
 
@@ -769,7 +766,7 @@ mod traversable_binary_expression {
             operator: BinaryOperator,
             right: Orphan<traversable::Expression<'a>>,
         ) -> Orphan<traversable::Expression<'a>> {
-            BinaryExpression::new_expr_in(left, operator, right, self.allocator)
+            BinaryExpression::new_expression_in(left, operator, right, self.allocator)
         }
     }
 
@@ -818,17 +815,17 @@ mod traversable_unary_expression {
     link_types!(super::UnaryExpression, UnaryExpression);
 
     impl<'a> UnaryExpression<'a> {
-        pub fn new_expr_in(
+        pub fn new_expression_in(
             operator: UnaryOperator,
             argument: Orphan<traversable::Expression<'a>>,
             alloc: &'a Allocator,
         ) -> Orphan<traversable::Expression<'a>> {
-            let expr = alloc.galloc(Self {
+            let node = alloc.galloc(Self {
                 operator,
                 argument: argument.inner(),
             });
             // SAFETY: Node is newly created so by definition is not yet attached to AST
-            unsafe { Orphan::new(traversable::Expression::UnaryExpression(expr)) }
+            unsafe { Orphan::new(traversable::Expression::UnaryExpression(node)) }
         }
 
         pub fn argument(&self) -> traversable::Expression<'a> {
@@ -849,20 +846,19 @@ mod traversable_unary_expression {
         }
 
         /// Convenience method for setting `operator` from a ref.
-        pub fn set_operator(&'a self, operator: UnaryOperator, tk: &mut Token) {
-            self.borrow_mut(tk).operator = operator;
+        pub fn set_operator(&'a self, value: UnaryOperator, tk: &mut Token) {
+            self.borrow_mut(tk).operator = value;
         }
 
         /// Replace value of `argument` field, and return previous value.
         pub fn replace_argument(
             &'a self,
-            expr: Orphan<traversable::Expression<'a>>,
+            node: Orphan<traversable::Expression<'a>>,
             tk: &mut Token,
         ) -> Orphan<traversable::Expression<'a>> {
-            let old_argument = self.argument(tk);
-            self.borrow_mut(tk).argument = expr.inner();
-            // SAFETY: We have removed `old_right` from the AST
-            unsafe { Orphan::new(old_argument) }
+            let old = std::mem::replace(&mut self.borrow_mut(tk).argument, node.inner());
+            // SAFETY: We have removed `old` from the AST
+            unsafe { Orphan::new(old) }
         }
 
         #[inline]
@@ -880,8 +876,8 @@ mod traversable_unary_expression {
         }
 
         #[inline]
-        fn set(&self, argument: traversable::Expression<'a>, tk: &mut Token) {
-            self.0.borrow_mut(tk).argument = argument;
+        fn set(&self, node: traversable::Expression<'a>, tk: &mut Token) {
+            self.0.borrow_mut(tk).argument = node;
         }
     }
 
@@ -892,7 +888,7 @@ mod traversable_unary_expression {
             operator: UnaryOperator,
             argument: Orphan<traversable::Expression<'a>>,
         ) -> Orphan<traversable::Expression<'a>> {
-            UnaryExpression::new_expr_in(operator, argument, self.allocator)
+            UnaryExpression::new_expression_in(operator, argument, self.allocator)
         }
     }
 

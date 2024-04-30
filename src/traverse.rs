@@ -94,8 +94,8 @@ impl<'a> TraverseCtx<'a> {
     }
 
     #[inline]
-    pub fn push_stack(&mut self, parent: Ancestor<'a>) {
-        self.stack.push(parent);
+    pub fn push_stack(&mut self, ancestor: Ancestor<'a>) {
+        self.stack.push(ancestor);
     }
 
     #[inline]
@@ -104,9 +104,8 @@ impl<'a> TraverseCtx<'a> {
     }
 
     #[inline]
-    pub fn replace_stack(&mut self, parent: Ancestor<'a>) {
-        let index = self.stack.len() - 1;
-        self.stack[index] = parent;
+    pub fn replace_stack(&mut self, ancestor: Ancestor<'a>) {
+        *self.stack.last_mut().unwrap() = ancestor;
     }
 }
 
