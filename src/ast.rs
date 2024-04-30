@@ -95,6 +95,11 @@
 //!   and all access to AST nodes' fields which contain other nodes must be intermediated
 //!   via a method which upholds this invariant.
 
+// TODO: Unfortunately I think `swap_with` and `GCell::swap` are unsound.
+// It allows circumventing the no-duplicate nodes rule, because you can swap *any* node into
+// some position in the AST, even a node which is already in the AST elsewhere.
+// Need to find some way to statically prevent this.
+
 // TODO: Create the "Traversable" types with a macro to ensure they cannot be out of sync,
 // and apply `#[repr(C)]` (for structs) / `#[repr(C, u8)]` (for enums) programmatically,
 // so can't get forgotten. Generate accessor methods (`replace_*` etc) with a macro/codegen too.
