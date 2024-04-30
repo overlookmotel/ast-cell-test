@@ -117,7 +117,7 @@
 use oxc_allocator::{Allocator, Box, Vec};
 
 use crate::{
-    cell::{GCell, SharedBox, SharedVec, Token},
+    cell::{GCell, SharedBox, Token},
     traverse::{Traverse, TraverseCtx},
 };
 
@@ -261,7 +261,9 @@ mod traversable_program {
 
     #[repr(C)]
     pub struct Program<'a> {
-        body: SharedVec<'a, traversable::Statement<'a>>,
+        // `Statement` is an enum so we can just use `Vec` instead of `SharedVec`.
+        // For structs, `SharedVec` is still required e.g. `SharedVec<BindingProperty>`.
+        body: Vec<'a, traversable::Statement<'a>>,
     }
 
     link_types!(super::Program, Program);
@@ -271,8 +273,8 @@ mod traversable_program {
             self.body.len()
         }
 
-        pub fn body_stmt(&self, index: usize, tk: &Token) -> traversable::Statement<'a> {
-            *self.body[index].borrow(tk)
+        pub fn body_stmt(&self, index: usize) -> traversable::Statement<'a> {
+            self.body[index]
         }
     }
 
@@ -287,7 +289,7 @@ mod traversable_program {
         /// Convenience method for getting a body statement from a ref.
         #[inline]
         pub fn body_stmt(&'a self, index: usize, tk: &Token) -> traversable::Statement<'a> {
-            *self.borrow(tk).body[index].borrow(tk)
+            self.borrow(tk).body[index]
         }
 
         /// Replace statement at `index` of `Program` body, and return previous value.
@@ -304,8 +306,7 @@ mod traversable_program {
                 .body
                 .get_mut(index)
                 .expect("Out of bounds vec access");
-            let old_stmt = std::mem::replace(item, GCell::new(stmt.inner()));
-            let old_stmt = old_stmt.into_inner();
+            let old_stmt = std::mem::replace(item, stmt.inner());
             // SAFETY: We have removed `old_stmt` from the AST
             unsafe { Orphan::new(old_stmt) }
         }
@@ -319,7 +320,7 @@ mod traversable_program {
         }
 
         pub fn push_body_stmt(&'a self, stmt: Orphan<traversable::Statement<'a>>, tk: &mut Token) {
-            self.borrow_mut(tk).body.push(GCell::new(stmt.inner()));
+            self.borrow_mut(tk).body.push(stmt.inner());
         }
     }
 
@@ -331,13 +332,12 @@ mod traversable_program {
     impl<'a> TraversableField<'a, traversable::Statement<'a>> for ProgramBodyStmt<'a> {
         #[inline]
         fn get(&self, tk: &Token) -> traversable::Statement<'a> {
-            let item = self
+            *self
                 .program
                 .borrow(tk)
                 .body
                 .get(self.index)
-                .expect("Out of bounds vec access");
-            *item.borrow(tk)
+                .expect("Out of bounds vec access")
         }
 
         #[inline]
@@ -348,7 +348,7 @@ mod traversable_program {
                 .body
                 .get_mut(self.index)
                 .expect("Out of bounds vec access");
-            *item = GCell::new(stmt);
+            *item = stmt;
         }
     }
 

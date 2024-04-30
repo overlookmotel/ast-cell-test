@@ -152,4 +152,5 @@ unsafe impl<T: ?Sized + Send + Sync> Sync for GCell<T> {}
 pub type SharedBox<'a, T> = &'a GCell<T>;
 
 /// Type alias for a shared Vec
+#[allow(dead_code)]
 pub type SharedVec<'a, T> = oxc_allocator::Vec<'a, GCell<T>>;
