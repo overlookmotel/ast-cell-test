@@ -143,11 +143,22 @@
 // and the old `UnaryExpression` `typeof <dummy>` is discarded.
 // So we now have a valid AST containing no dummies, but dummy count is 1, which will cause a panic
 // at end of transform.
+//
 // One solution would be to add a method `Orphan::discard` which traverses the node being discarded,
 // and decrements the dummy count by the number of dummies it contains. But this would be expensive
 // if the discarded tree is deep.
 // Or a function to consume an `Orphan<T>` and get all its child nodes as `Orphan`s. If any of children
 // are dummies, that would decrement dummy count.
+//
+// Also need to prevent `take_*` on an `Orphan`'s properties, as that would increment dummy count,
+// but that sub-tree is not connected to the AST, so no further dummys in actual AST have been created.
+// `Orphan` could either:
+// 1. Become an opaque type which you can't look inside.
+//    Use `Orphan::unpack` which gives you all children as `Orphan`s.
+// or
+// 2. Allows looking inside it, but doesn't allow access to `take_*` or `replace_*` on it or its children,
+//    children of children etc.
+// Option 1 is easier to implement, so probably better to go with that.
 
 // TODO: Enforce that no dummy AST nodes left in AST via static means.
 // Only way I can see to do this is to turn `TransformCtx` into a little state machine.
